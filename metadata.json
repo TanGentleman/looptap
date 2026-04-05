@@ -1,0 +1,50 @@
+{
+  "title": "looptap",
+  "description": "Behavioral signals from coding agent transcripts",
+  "databases": {
+    "looptap": {
+      "queries": {
+        "signal-summary": {
+          "title": "Signal summary",
+          "description": "Count and average confidence by signal type",
+          "sql": "select signal_type, count(*) as n, round(avg(confidence), 2) as avg_confidence, round(min(confidence), 2) as min_confidence, round(max(confidence), 2) as max_confidence from signals group by signal_type order by n desc"
+        },
+        "hotspots": {
+          "title": "Sessions with most signals",
+          "description": "Which sessions are generating the most noise?",
+          "sql": "select s.id, s.project, s.model, s.total_turns, s.tool_calls, count(sig.id) as signal_count, group_concat(distinct sig.signal_type) as signal_types from sessions s join signals sig on s.id = sig.session_id group by s.id order by signal_count desc limit 20"
+        },
+        "failure-log": {
+          "title": "Failure log",
+          "description": "Every failure signal with evidence and turn context",
+          "sql": "select sig.session_id, sig.turn_idx, sig.confidence, sig.evidence, t.role, substr(t.content, 1, 200) as content_preview from signals sig left join turns t on sig.session_id = t.session_id and sig.turn_idx = t.idx where sig.signal_type = 'failure' order by sig.confidence desc"
+        },
+        "loop-log": {
+          "title": "Loop log",
+          "description": "Tool call death spirals — same tool, same args, same hope",
+          "sql": "select sig.session_id, sig.turn_idx, sig.confidence, sig.evidence, t.tool_name, substr(t.content, 1, 200) as content_preview from signals sig left join turns t on sig.session_id = t.session_id and sig.turn_idx = t.idx where sig.signal_type = 'loop' order by sig.confidence desc"
+        },
+        "signals-by-project": {
+          "title": "Signals by project",
+          "description": "Which projects cause the most agent distress?",
+          "sql": "select s.project, count(sig.id) as signal_count, count(distinct s.id) as session_count, round(1.0 * count(sig.id) / count(distinct s.id), 1) as signals_per_session, group_concat(distinct sig.signal_type) as signal_types from sessions s join signals sig on s.id = sig.session_id group by s.project order by signals_per_session desc"
+        },
+        "vibes-check": {
+          "title": "Vibes check",
+          "description": "How did each session end? Satisfaction vs disengagement vs silence.",
+          "sql": "select s.id, s.project, s.total_turns, coalesce((select sig.signal_type from signals sig where sig.session_id = s.id and sig.signal_type in ('satisfaction', 'disengagement') order by sig.turn_idx desc limit 1), 'neutral') as ending_vibe, s.started_at, s.ended_at from sessions s order by s.started_at desc"
+        },
+        "model-comparison": {
+          "title": "Model comparison",
+          "description": "Signal rates across different models",
+          "sql": "select s.model, count(distinct s.id) as sessions, count(sig.id) as signals, round(1.0 * count(sig.id) / count(distinct s.id), 1) as signals_per_session from sessions s left join signals sig on s.id = sig.session_id group by s.model order by signals_per_session desc"
+        },
+        "exhaustion-events": {
+          "title": "Exhaustion events",
+          "description": "Rate limits, context overflows, timeouts",
+          "sql": "select sig.session_id, sig.turn_idx, sig.evidence, substr(t.content, 1, 300) as content_preview from signals sig left join turns t on sig.session_id = t.session_id and sig.turn_idx = t.idx where sig.signal_type = 'exhaustion' order by sig.session_id, sig.turn_idx"
+        }
+      }
+    }
+  }
+}

@@ -61,16 +61,17 @@ loop_window = 6               # sliding window for tool call loops
 ## Browse
 
 ```bash
-pip install datasette datasette-vega
-datasette ~/.looptap/looptap.db
+uvx datasette ~/.looptap/looptap.db --metadata metadata.json
 ```
+
+Ships with canned queries: signal summary, hotspots, failure log, loop log, signals by project, vibes check, model comparison, exhaustion events.
 
 ## Status
 
 - [x] CLI with all commands
 - [x] Claude Code transcript parser
+- [x] Signal detection (all 7 detectors)
+- [x] Datasette canned queries
 - [ ] Codex transcript parser
-- [ ] Signal detection logic (stubs in place)
-- [ ] Datasette canned queries
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the technical deep dive.
