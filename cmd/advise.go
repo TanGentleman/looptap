@@ -101,6 +101,11 @@ func NewAdviseCmd(dbPath *string) *cobra.Command {
 				fmt.Fprintln(out)
 			}
 
+			if u := result.Usage; u != nil {
+				fmt.Fprintf(out, "── %s · %d tokens (%d in, %d out) · %dms ──\n",
+					u.Model, u.TotalTokens, u.PromptTokens, u.ResponseTokens, u.LatencyMs)
+			}
+
 			return nil
 		},
 	}

@@ -29,15 +29,30 @@ func NewClient(ctx context.Context, apiKey, model string) (*Client, error) {
 	return &Client{client: c, model: model}, nil
 }
 
-// Generate sends a system+user prompt pair and returns the text response.
-func (c *Client) Generate(ctx context.Context, system, user string) (string, error) {
+// GenerateResult holds the response text and token counts.
+type GenerateResult struct {
+	Text           string
+	PromptTokens   int32
+	ResponseTokens int32
+	TotalTokens    int32
+}
+
+// Generate sends a system+user prompt pair and returns the text response + usage.
+func (c *Client) Generate(ctx context.Context, system, user string) (*GenerateResult, error) {
 	resp, err := c.client.Models.GenerateContent(ctx, c.model, genai.Text(user), &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(system, genai.RoleUser),
 		Temperature:       genai.Ptr(float32(0.3)),
 		ResponseMIMEType:  "application/json",
 	})
 	if err != nil {
-		return "", fmt.Errorf("generate: %w", err)
+		return nil, fmt.Errorf("generate: %w", err)
 	}
-	return resp.Text(), nil
+
+	result := &GenerateResult{Text: resp.Text()}
+	if u := resp.UsageMetadata; u != nil {
+		result.PromptTokens = u.PromptTokenCount
+		result.ResponseTokens = u.CandidatesTokenCount
+		result.TotalTokens = u.TotalTokenCount
+	}
+	return result, nil
 }
