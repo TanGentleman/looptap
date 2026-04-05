@@ -1,6 +1,9 @@
 package signal
 
-import "looptap/internal/parser"
+import (
+	"looptap/internal/parser"
+	"strconv"
+)
 
 // Loop detects repeated tool call patterns — same tool, same args, same hope.
 type Loop struct{}
@@ -70,7 +73,7 @@ func detectLoopInWindow(sessionID string, window []parser.Turn) []Signal {
 				Category:   "execution",
 				TurnIdx:    &idx,
 				Confidence: confidence,
-				Evidence:   toolName + " called " + itoa(similarCount+1) + " times with similar args",
+				Evidence:   toolName + " called " + strconv.Itoa(similarCount+1) + " times with similar args",
 			})
 		}
 	}
@@ -94,12 +97,3 @@ func dedup(signals []Signal) []Signal {
 	return out
 }
 
-func itoa(n int) string {
-	if n < 0 {
-		return "-" + itoa(-n)
-	}
-	if n < 10 {
-		return string(rune('0' + n))
-	}
-	return itoa(n/10) + string(rune('0'+n%10))
-}
