@@ -27,13 +27,13 @@ jobs:
           GOOS: darwin
           GOARCH: amd64
           CGO_ENABLED: "1"
-        run: go build -trimpath -ldflags="-s -w" -o looptap-darwin-amd64 .
+        run: go build -buildvcs=false -trimpath -ldflags="-s -w" -o looptap-darwin-amd64 .
       - name: arm64
         env:
           GOOS: darwin
           GOARCH: arm64
           CGO_ENABLED: "1"
-        run: go build -trimpath -ldflags="-s -w" -o looptap-darwin-arm64 .
+        run: go build -buildvcs=false -trimpath -ldflags="-s -w" -o looptap-darwin-arm64 .
       - uses: actions/upload-artifact@v4
         with:
           name: bin-darwin-amd64
@@ -52,7 +52,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
-      - run: CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o looptap-linux-amd64 .
+      - run: CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w" -o looptap-linux-amd64 .
       - uses: actions/upload-artifact@v4
         with:
           name: bin-linux-amd64
@@ -67,7 +67,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
-      - run: CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o looptap-linux-arm64 .
+      - run: CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w" -o looptap-linux-arm64 .
       - uses: actions/upload-artifact@v4
         with:
           name: bin-linux-arm64
@@ -81,7 +81,7 @@ jobs:
       - run: |
           docker run --rm -v "${PWD}:/src" -w /src golang:1.24-alpine sh -ec '
             apk add --no-cache build-base sqlite-dev git
-            CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o looptap-linux-amd64-musl .
+            CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w" -o looptap-linux-amd64-musl .
           '
       - uses: actions/upload-artifact@v4
         with:
@@ -90,13 +90,13 @@ jobs:
 
   linux-musl-arm64:
     name: Linux musl arm64
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - run: |
-          docker run --rm --platform linux/arm64 -v "${PWD}:/src" -w /src golang:1.24-alpine sh -ec '
+          docker run --rm -v "${PWD}:/src" -w /src golang:1.24-alpine sh -ec '
             apk add --no-cache build-base sqlite-dev git
-            CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -o looptap-linux-arm64-musl .
+            CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w" -o looptap-linux-arm64-musl .
           '
       - uses: actions/upload-artifact@v4
         with:
