@@ -9,12 +9,19 @@ import (
 )
 
 // InsertSession writes a session and its turns to the database.
+// If the session already exists (same ID), it gets replaced — transcripts
+// grow over time and we want the latest version.
 func (db *DB) InsertSession(s parser.Session) error {
 	tx, err := db.conn.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
+
+	// Out with the old (if any)
+	tx.Exec(`DELETE FROM signals WHERE session_id = ?`, s.ID)
+	tx.Exec(`DELETE FROM turns WHERE session_id = ?`, s.ID)
+	tx.Exec(`DELETE FROM sessions WHERE id = ?`, s.ID)
 
 	toolCalls := 0
 	for _, t := range s.Turns {
