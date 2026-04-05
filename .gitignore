@@ -1,0 +1,20 @@
+# Binary output
+looptap
+
+# Test databases
+*.db
+*.db-journal
+*.db-wal
+
+# OS noise
+.DS_Store
+Thumbs.db
+
+# Editor state
+.vscode/
+.idea/
+*.swp
+*~
+
+# Go build cache (shouldn't be here, but just in case)
+/vendor/
