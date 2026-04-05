@@ -1,122 +1,58 @@
 # looptap
 
-looptap parses local coding agent transcripts (Claude Code, Codex, etc.), computes lightweight behavioral signals, and writes everything to a SQLite database. You point [datasette](https://datasette.io/) at the DB for visualization.
+You talk to coding agents. They talk back. But what's *actually* happening in those conversations?
 
-The name: you're tapping into the feedback loop between developer and agent.
-
-## What it does
+looptap reads your local agent transcripts, looks for behavioral patterns — correction loops, stagnation, quiet satisfaction, tool call death spirals — and writes it all to SQLite. Point [datasette](https://datasette.io/) at the DB and suddenly you can *see* the feedback loop.
 
 ```
-local transcript files → parse → SQLite → signal → SQLite (enriched)
-                                                         ↓
-                                                    datasette / any SQL client
+transcripts → parse → SQLite → signal → SQLite (enriched)
+                                              ↓
+                                         datasette / SQL
 ```
 
-### Commands
-
-| Command | Purpose |
-|---------|---------|
-| `looptap parse` | Discover agent transcripts, normalize to common schema, write to SQLite. Incremental (skips unchanged files by hash). |
-| `looptap signal` | Run signal detectors over parsed sessions, write results to `signals` table. Skips already-signaled sessions unless `--recompute`. |
-| `looptap run` | `parse` then `signal`. |
-| `looptap info` | Print DB stats (session/turn/signal counts by source and type). |
-
-Global flag: `--db <path>` (default `~/.looptap/looptap.db`).
-
-## Building
+## Usage
 
 ```bash
-go build -o looptap .
+looptap run                          # parse transcripts, detect signals
+looptap info                         # what's in the db?
+looptap parse                        # just parse, no signals
+looptap signal --recompute           # re-run detectors on everything
 ```
 
-Requires CGo for SQLite (`github.com/mattn/go-sqlite3`).
+All commands take `--db <path>` (default `~/.looptap/looptap.db`).
 
-## Dependencies
+## Signals
 
-| Dependency | Purpose |
-|------------|---------|
-| `github.com/spf13/cobra` | CLI framework |
-| `github.com/mattn/go-sqlite3` | SQLite driver (CGo) |
-| `github.com/BurntSushi/toml` | Config parsing |
-| `github.com/stretchr/testify` | Test assertions |
+| Signal | Vibes |
+|--------|-------|
+| **Misalignment** | "no, that's not what I meant" — user correcting / rephrasing |
+| **Stagnation** | assistant saying the same thing in different fonts |
+| **Disengagement** | "nvm I'll do it myself" |
+| **Satisfaction** | "perfect, thanks!" (the good ending) |
+| **Failure** | stack traces, exit code 1, the red text |
+| **Loop** | same tool, same args, same hope, different minute |
+| **Exhaustion** | rate limits, context window exceeded, timeout |
 
-No web framework. No ORM. No LLM client libraries.
+## Install
 
-## Project layout
-
-```
-looptap/
-├── main.go                        # cobra root command, calls cmd/
-├── cmd/
-│   ├── parse.go                   # parse command wiring
-│   ├── signal.go                  # signal command wiring
-│   ├── run.go                     # run command wiring
-│   └── info.go                    # info command wiring
-├── internal/
-│   ├── config/config.go           # load ~/.looptap/config.toml
-│   ├── db/
-│   │   ├── db.go                  # Open(), Migrate(), Close()
-│   │   └── queries.go             # InsertSession(), GetSession(), InsertSignals(), etc.
-│   ├── parser/
-│   │   ├── types.go               # Session, Turn structs
-│   │   ├── parser.go              # Parser interface, Detect() auto-selection, Discover()
-│   │   ├── claude_code.go         # Claude Code JSONL parser
-│   │   └── codex.go               # Codex CLI parser
-│   └── signal/
-│       ├── types.go               # Signal struct
-│       ├── detector.go            # Detector interface, RunAll()
-│       ├── text.go                # Normalize(), TokenSimilarity(), MatchPhrases()
-│       ├── misalignment.go        # correction & rephrasing detection
-│       ├── stagnation.go          # repetitive assistant behavior
-│       ├── disengagement.go       # user abandonment patterns
-│       ├── satisfaction.go        # positive feedback patterns
-│       ├── failure.go             # tool execution errors
-│       ├── loop.go                # repeated tool call patterns
-│       └── exhaustion.go          # rate limits, context length, timeouts
-├── phrases/                       # go:embed, one phrase per line
-│   ├── misalignment.txt
-│   ├── disengagement.txt
-│   └── satisfaction.txt
-└── testdata/                      # fixture transcripts (coming soon)
+```bash
+go build -o looptap .    # needs CGo for SQLite
 ```
 
-All domain logic lives in `internal/`. The `cmd/` layer is glue — it parses flags, calls `internal/`, and prints output. `internal/` packages are importable as a Go library.
+## Configure
 
-## Configuration
-
-`~/.looptap/config.toml`:
+Optional. `~/.looptap/config.toml`:
 
 ```toml
-[database]
-path = "~/.looptap/looptap.db"
-
 [sources]
-paths = ["~/extra-logs/"]
+paths = ["~/extra-logs/"]     # additional transcript directories
 
 [signals]
-stagnation_similarity  = 0.8
-stagnation_turn_factor = 2.0
-loop_window            = 6
-loop_min_repeats       = 3
-
-[phrases]
-# misalignment = "/path/to/replace.txt"
-# misalignment_extra = "/path/to/append.txt"
+stagnation_similarity = 0.8   # how similar is "repeating yourself"
+loop_window = 6               # sliding window for tool call loops
 ```
 
-## Signal types
-
-| Signal | Category | What it catches |
-|--------|----------|----------------|
-| Misalignment | interaction | User corrections, rephrasing the same request |
-| Stagnation | interaction | Assistant repeating itself, unusually long sessions |
-| Disengagement | interaction | User giving up, terse final messages |
-| Satisfaction | interaction | Gratitude, success phrases |
-| Failure | execution | Tool errors, stack traces, nonzero exit codes |
-| Loop | execution | Same tool called repeatedly with similar input |
-| Exhaustion | environment | Rate limits, context length, timeouts |
-
-## Datasette
+## Browse
 
 ```bash
 pip install datasette datasette-vega
@@ -125,9 +61,10 @@ datasette ~/.looptap/looptap.db
 
 ## Status
 
-Scaffold is in place and the binary compiles. Next up:
-- [ ] Implement Claude Code JSONL parser
-- [ ] Implement Codex parser
-- [ ] Wire up signal detection logic
-- [ ] Add test fixtures and golden file tests
-- [ ] Ship `datasette/metadata.yml` with canned queries
+- [x] CLI with all commands
+- [x] Claude Code transcript parser
+- [ ] Codex transcript parser
+- [ ] Signal detection logic (stubs in place)
+- [ ] Datasette canned queries
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the technical deep dive.
