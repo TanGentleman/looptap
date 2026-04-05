@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Install looptap from GitHub Releases (single binary + SHA256SUMS).
+# Install (or update) looptap from GitHub Releases.
+# Re-run to update — it overwrites the existing binary.
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/TanGentleman/looptap/main/scripts/install.sh | bash
 #   curl -fsSL ... | bash -s -- latest

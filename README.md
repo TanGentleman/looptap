@@ -36,7 +36,13 @@ All commands take `--db <path>` (default `~/.looptap/looptap.db`).
 ## Install
 
 ```bash
-go build -o looptap .    # needs CGo for SQLite
+curl -fsSL https://raw.githubusercontent.com/TanGentleman/looptap/main/scripts/install.sh | bash
+```
+
+Or build from source (needs CGo for SQLite):
+
+```bash
+go build -o looptap .
 ```
 
 ## Configure
