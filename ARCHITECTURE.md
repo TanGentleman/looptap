@@ -158,6 +158,22 @@ func MatchPhrases(text string, phrases []string, maxEditDist int) (bool, string)
 
 `MatchPhrases` does exact substring match first, then falls back to Levenshtein edit distance on word-level sliding windows.
 
+## Advisor (`internal/advise/`)
+
+The `advise` command closes the loop: signals go in, CLAUDE.md rules come out.
+
+```
+SQLite signals → context.go (gather) → prompt.go (assemble) → llm.go (Gemini) → parse JSON → print
+```
+
+**`context.go`** — SQL queries that pull signal summaries + failure/loop/misalignment details. Returns structs, not strings.
+
+**`prompt.go`** — System prompt tells the model to output a JSON array of recommendations. User prompt builder assembles signal context into labeled sections.
+
+**`llm.go`** — Thin wrapper around `genai.Client.Models.GenerateContent`. This is the only file that imports the Gemini SDK — the swap point if adk-go or another framework earns its keep later.
+
+**`advise.go`** — Orchestrator. Gather → prompt → call → parse → return. No cobra knowledge, no `os.Exit`.
+
 ## Config (`~/.looptap/config.toml`)
 
 ```toml
@@ -176,6 +192,10 @@ loop_min_repeats       = 3
 [phrases]
 misalignment = "/path/to/replace.txt"       # override built-in phrases
 misalignment_extra = "/path/to/append.txt"  # add to built-in phrases
+
+[advise]
+api_key = ""                               # prefer GOOGLE_API_KEY env
+model = "gemini-3.1-flash-lite-preview"
 ```
 
 ## Dependencies
@@ -186,8 +206,9 @@ misalignment_extra = "/path/to/append.txt"  # add to built-in phrases
 | `github.com/mattn/go-sqlite3` | SQLite driver (CGo) |
 | `github.com/BurntSushi/toml` | Config parsing |
 | `github.com/stretchr/testify` | Test assertions |
+| `google.golang.org/genai` | Gemini API client (for `advise`) |
 
-No web framework. No ORM. No LLM client libraries.
+No web framework. No ORM.
 
 ## Project layout
 
@@ -205,6 +226,11 @@ internal/signal/types.go       # Signal struct
 internal/signal/detector.go    # Detector interface, RunAll()
 internal/signal/text.go        # shared text utilities
 internal/signal/*.go           # one file per signal detector
+internal/advise/advise.go      # advisor orchestrator
+internal/advise/context.go     # signal context queries
+internal/advise/prompt.go      # LLM prompt templates
+internal/advise/llm.go         # Gemini API wrapper
+internal/advise/types.go       # Recommendation, AdviceResult
 phrases/*.txt                  # embedded phrase lists
 testdata/                      # fixture transcripts
 ```

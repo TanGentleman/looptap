@@ -10,7 +10,7 @@ go build -o looptap . && ./looptap info --db /tmp/test.db
 
 ## Status
 
-Full pipeline works — Claude Code parser, all 7 signal detectors, SQLite, datasette views. Codex parser is stubbed. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
+Full pipeline works — Claude Code parser, all 7 signal detectors, SQLite, datasette views, LLM advisor. Codex parser is stubbed. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
 
 ## Rules
 

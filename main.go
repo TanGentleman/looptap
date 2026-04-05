@@ -24,6 +24,7 @@ func main() {
 		cmd.NewSignalCmd(&dbPath),
 		cmd.NewRunCmd(&dbPath),
 		cmd.NewInfoCmd(&dbPath),
+		cmd.NewAdviseCmd(&dbPath),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

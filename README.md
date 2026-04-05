@@ -17,7 +17,12 @@ looptap run                          # parse transcripts, detect signals
 looptap info                         # what's in the db?
 looptap parse                        # just parse, no signals
 looptap signal --recompute           # re-run detectors on everything
+looptap advise                       # ask Gemini for CLAUDE.md suggestions
+looptap advise --project myapp       # scope to one project
+looptap advise --json                # machine-readable output
 ```
+
+`advise` requires a Gemini API key: `GOOGLE_API_KEY` env var, `--api-key` flag, or `[advise] api_key` in config.
 
 All commands take `--db <path>` (default `~/.looptap/looptap.db`).
 
@@ -72,6 +77,7 @@ Ships with canned queries: signal summary, hotspots, failure log, loop log, sign
 - [x] Claude Code transcript parser
 - [x] Signal detection (all 7 detectors)
 - [x] Datasette canned queries
+- [x] LLM-powered CLAUDE.md advisor (`advise` command)
 - [ ] Codex transcript parser
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the technical deep dive.
