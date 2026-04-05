@@ -1,0 +1,16 @@
+rate limit
+rate_limit
+rate-limit
+too many requests
+context length exceeded
+context window
+token limit
+maximum context
+request timed out
+connection timed out
+timeout exceeded
+429
+quota exceeded
+throttled
+capacity
+overloaded
