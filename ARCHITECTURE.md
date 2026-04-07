@@ -174,6 +174,20 @@ SQLite signals → context.go (gather) → prompt.go (assemble) → llm.go (Gemi
 
 **`advise.go`** — Orchestrator. Gather → prompt → call → parse → return. No cobra knowledge, no `os.Exit`.
 
+## Analyzer (`internal/analyze/`)
+
+The `analyze` command is `advise`'s mirror image: instead of asking "what rules should you add?", it asks "how good are the rules you already have?". Same Gemini wrapper, different prompt.
+
+```
+CLAUDE.md → reader.go → prompt.go (assemble) → advise.Client → parse JSON → print
+```
+
+**`reader.go`** — Reads the target file (default `~/.claude/CLAUDE.md`). User-facing errors for missing/empty files.
+
+**`prompt.go`** — System prompt frames the LLM as a quality reviewer (clarity, completeness, consistency, structure, actionability). User prompt builder accepts an optional `*advise.SignalContext` so future versions can cross-reference rules against observed behavior.
+
+**`analyze.go`** — Orchestrator. Reuses `advise.NewClient` rather than duplicating the Gemini wrapper. Returns `Finding`s, not `Recommendation`s.
+
 ## Config (`~/.looptap/config.toml`)
 
 ```toml
@@ -206,7 +220,7 @@ model = "gemini-3.1-flash-lite-preview"
 | `github.com/mattn/go-sqlite3` | SQLite driver (CGo) |
 | `github.com/BurntSushi/toml` | Config parsing |
 | `github.com/stretchr/testify` | Test assertions |
-| `google.golang.org/genai` | Gemini API client (for `advise`) |
+| `google.golang.org/genai` | Gemini API client (for `advise` and `analyze`) |
 
 No web framework. No ORM.
 
@@ -231,6 +245,10 @@ internal/advise/context.go     # signal context queries
 internal/advise/prompt.go      # LLM prompt templates
 internal/advise/llm.go         # Gemini API wrapper
 internal/advise/types.go       # Recommendation, AdviceResult
+internal/analyze/analyze.go    # CLAUDE.md quality reviewer
+internal/analyze/reader.go     # file I/O + default path resolution
+internal/analyze/prompt.go     # quality-review prompt templates
+internal/analyze/types.go      # Finding, AnalyzeResult
 phrases/*.txt                  # embedded phrase lists
 testdata/                      # fixture transcripts
 ```
