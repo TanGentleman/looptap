@@ -11,7 +11,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func NewAnalyzeCmd(_ *string) *cobra.Command {
+func NewAnalyzeCmd() *cobra.Command {
 	var (
 		filePath string
 		apiKey   string

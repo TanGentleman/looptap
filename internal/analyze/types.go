@@ -5,9 +5,6 @@ import "looptap/internal/advise"
 // AnalyzeRequest controls what gets analyzed.
 type AnalyzeRequest struct {
 	FilePath string // path to the CLAUDE.md (or similar) file
-	Project  string // optional — scope signal context to one project
-
-	// Future: skills discovery, .claude/ directory scanning, etc.
 }
 
 // Finding is a single observation about the analyzed file.

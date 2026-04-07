@@ -4,27 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"looptap/internal/advise"
 )
 
 // Run reads a CLAUDE.md file, sends it to the LLM for quality review, and returns findings.
-// When db is non-nil and signals are available, they enrich the review (not yet wired).
 func Run(ctx context.Context, req AnalyzeRequest, apiKey, model string) (*AnalyzeResult, error) {
-	// 1. Read the file
 	content, err := ReadFile(req.FilePath)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Gather signal context (future — pass nil for now)
-	var signals *advise.SignalContext
+	userPrompt := BuildUserPrompt(content)
 
-	// 3. Build the prompt
-	userPrompt := BuildUserPrompt(content, signals)
-
-	// 4. Call the LLM (reuse advise's client — same Gemini wrapper)
+	// Reuse advise's client — same Gemini wrapper, no need to duplicate.
 	client, err := advise.NewClient(ctx, apiKey, model)
 	if err != nil {
 		return nil, err
@@ -37,14 +32,15 @@ func Run(ctx context.Context, req AnalyzeRequest, apiKey, model string) (*Analyz
 		return nil, fmt.Errorf("LLM call failed: %w", err)
 	}
 
-	// 5. Parse the response
-	var findings []Finding
-	if err := json.Unmarshal([]byte(gen.Text), &findings); err != nil {
+	findings, err := parseFindings(gen.Text)
+	if err != nil {
+		// Surface the raw text so the user can still see something useful,
+		// but don't pretend it's a clarity finding.
 		findings = []Finding{{
-			Title:    "Raw analysis",
-			Body:     gen.Text,
+			Title:    "Unparseable LLM response",
+			Body:     fmt.Sprintf("%s\n\nRaw output:\n%s", err, gen.Text),
 			Severity: "info",
-			Category: "clarity",
+			Category: "info",
 		}}
 	}
 
@@ -55,7 +51,6 @@ func Run(ctx context.Context, req AnalyzeRequest, apiKey, model string) (*Analyz
 		TotalTokens:    gen.TotalTokens,
 		LatencyMs:      latency.Milliseconds(),
 		Timestamp:      time.Now().UTC().Format(time.RFC3339),
-		Project:        req.Project,
 	}
 
 	return &AnalyzeResult{
@@ -64,4 +59,33 @@ func Run(ctx context.Context, req AnalyzeRequest, apiKey, model string) (*Analyz
 		Model:    model,
 		Usage:    usage,
 	}, nil
+}
+
+// parseFindings pulls a JSON array out of the model's response. The prompt asks
+// for a ```json fenced block, but we tolerate bare JSON too in case the model
+// forgets the fences.
+func parseFindings(raw string) ([]Finding, error) {
+	body := extractJSONFence(raw)
+
+	var findings []Finding
+	if err := json.Unmarshal([]byte(body), &findings); err != nil {
+		return nil, fmt.Errorf("parsing JSON findings: %w", err)
+	}
+	return findings, nil
+}
+
+// extractJSONFence returns the contents of the first ```json ... ``` block,
+// falling back to the trimmed input if no fence is found.
+func extractJSONFence(s string) string {
+	const open = "```json"
+	start := strings.Index(s, open)
+	if start == -1 {
+		return strings.TrimSpace(s)
+	}
+	rest := s[start+len(open):]
+	end := strings.Index(rest, "```")
+	if end == -1 {
+		return strings.TrimSpace(rest)
+	}
+	return strings.TrimSpace(rest[:end])
 }

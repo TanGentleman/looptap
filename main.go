@@ -25,7 +25,7 @@ func main() {
 		cmd.NewRunCmd(&dbPath),
 		cmd.NewInfoCmd(&dbPath),
 		cmd.NewAdviseCmd(&dbPath),
-		cmd.NewAnalyzeCmd(&dbPath),
+		cmd.NewAnalyzeCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {

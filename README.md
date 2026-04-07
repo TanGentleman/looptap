@@ -1,4 +1,4 @@
-## looptap
+# looptap
 
 `strace` but for vibes. Reads your coding agent transcripts, finds the rough patches — correction loops, tool call death spirals, dead ends — and dumps it to SQLite.
 
