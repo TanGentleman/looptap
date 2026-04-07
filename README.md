@@ -32,5 +32,6 @@ uvx datasette ~/.looptap/looptap.db --metadata metadata.json
 
 ## Go deeper
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — how the pipeline works, all 7 signal detectors, schema
+- [API.md](API.md) — all commands, signals, config options, datasette queries
+- [ARCHITECTURE.md](ARCHITECTURE.md) — how the pipeline works, schema, internals
 - [CLAUDE.md](CLAUDE.md) — dev rules and conventions
