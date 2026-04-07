@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"looptap/internal/advise"
@@ -62,30 +61,14 @@ func Run(ctx context.Context, req AnalyzeRequest, apiKey, model string) (*Analyz
 }
 
 // parseFindings pulls a JSON array out of the model's response. The prompt asks
-// for a ```json fenced block, but we tolerate bare JSON too in case the model
-// forgets the fences.
+// for a ```json fenced block, but advise.ExtractJSONFence tolerates bare JSON
+// too in case the model forgets the fences.
 func parseFindings(raw string) ([]Finding, error) {
-	body := extractJSONFence(raw)
+	body := advise.ExtractJSONFence(raw)
 
 	var findings []Finding
 	if err := json.Unmarshal([]byte(body), &findings); err != nil {
 		return nil, fmt.Errorf("parsing JSON findings: %w", err)
 	}
 	return findings, nil
-}
-
-// extractJSONFence returns the contents of the first ```json ... ``` block,
-// falling back to the trimmed input if no fence is found.
-func extractJSONFence(s string) string {
-	const open = "```json"
-	start := strings.Index(s, open)
-	if start == -1 {
-		return strings.TrimSpace(s)
-	}
-	rest := s[start+len(open):]
-	end := strings.Index(rest, "```")
-	if end == -1 {
-		return strings.TrimSpace(rest)
-	}
-	return strings.TrimSpace(rest[:end])
 }

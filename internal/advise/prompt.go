@@ -11,7 +11,7 @@ You will receive signal data from a SQLite database: signal types (misalignment,
 
 Your job: turn patterns into concrete CLAUDE.md rules that would prevent the detected problems.
 
-Output a JSON array of recommendations. Each element:
+Output a single ` + "```json" + ` fenced code block containing a JSON array. Put nothing outside the fence — no preamble, no postscript, no commentary. Each array element:
 {
   "title": "short title",
   "body": "1-2 sentences explaining why this matters",

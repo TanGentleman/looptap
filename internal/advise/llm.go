@@ -3,6 +3,7 @@ package advise
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"google.golang.org/genai"
 )
@@ -38,11 +39,15 @@ type GenerateResult struct {
 }
 
 // Generate sends a system+user prompt pair and returns the text response + usage.
+//
+// Note: we do NOT set ResponseMIMEType=application/json here. Prompts that want
+// structured output should ask for a ```json fenced block and use ExtractJSONFence
+// to pull it out. JSON mode coupled us to Gemini's quirks and gave the model no
+// room to explain itself — parsing a fence is a small tax for a lot of freedom.
 func (c *Client) Generate(ctx context.Context, system, user string) (*GenerateResult, error) {
 	resp, err := c.client.Models.GenerateContent(ctx, c.model, genai.Text(user), &genai.GenerateContentConfig{
 		SystemInstruction: genai.NewContentFromText(system, genai.RoleUser),
 		Temperature:       genai.Ptr(float32(0.3)),
-		ResponseMIMEType:  "application/json",
 	})
 	if err != nil {
 		return nil, fmt.Errorf("generate: %w", err)
@@ -55,4 +60,22 @@ func (c *Client) Generate(ctx context.Context, system, user string) (*GenerateRe
 		result.TotalTokens = u.TotalTokenCount
 	}
 	return result, nil
+}
+
+// ExtractJSONFence returns the contents of the first ```json ... ``` block in s.
+// If no fence is found, the trimmed input is returned unchanged — callers can
+// still try to unmarshal bare JSON, and the error message will be honest about
+// what the model sent back.
+func ExtractJSONFence(s string) string {
+	const open = "```json"
+	start := strings.Index(s, open)
+	if start == -1 {
+		return strings.TrimSpace(s)
+	}
+	rest := s[start+len(open):]
+	end := strings.Index(rest, "```")
+	if end == -1 {
+		return strings.TrimSpace(rest)
+	}
+	return strings.TrimSpace(rest[:end])
 }
