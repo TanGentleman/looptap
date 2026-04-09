@@ -12,6 +12,13 @@ import (
 )
 
 func NewHTMLCmd() *cobra.Command {
+	return newHTMLCmd(nil)
+}
+
+// newHTMLCmd lets tests inject a fake runner so they don't need to shell out
+// to a real `claude` binary. Production code calls NewHTMLCmd, which passes
+// nil and lets htmlreport.Generate fall back to the real claude on PATH.
+func newHTMLCmd(runner htmlreport.Runner) *cobra.Command {
 	var (
 		repoPath   string
 		branchFlag string
@@ -25,9 +32,13 @@ func NewHTMLCmd() *cobra.Command {
 		Long: `Analyzes a git branch and writes a self-contained HTML page that
 communicates the branch narrative to the rest of the team.
 
+Under the hood this runs ` + "`claude -p`" + ` in headless mode inside the target
+repo, with read-only tools (Bash, Read, Glob, Grep) so it can poke at git.
+
 Repo and branch may be set via flags or environment variables:
   LOOPTAP_REPO_PATH   path to a git repo (default: cwd)
   LOOPTAP_BRANCH      current | default | <branch-name> (default: current)
+  LOOPTAP_CLAUDE_BIN  override the claude binary (default: claude on PATH)
 
 Use --force to skip the confirmation prompt.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -40,13 +51,11 @@ Use --force to skip the confirmation prompt.`,
 			}
 
 			mode, name := htmlreport.ParseBranchFlag(branchFlag)
-			settings := htmlreport.HTMLSettings{
+			resolved, err := htmlreport.Resolve(htmlreport.HTMLSettings{
 				RepoPath:   repoPath,
 				BranchMode: mode,
 				BranchName: name,
-			}
-
-			resolved, err := htmlreport.Resolve(settings)
+			})
 			if err != nil {
 				return err
 			}
@@ -68,16 +77,16 @@ Use --force to skip the confirmation prompt.`,
 				}
 			}
 
-			html, err := htmlreport.Generate(resolved)
+			fmt.Fprintln(out, "Asking claude... (this can take a minute)")
+			html, err := htmlreport.Generate(cmd.Context(), resolved, runner)
 			if err != nil {
-				return err
+				return fmt.Errorf("generating HTML: %w", err)
 			}
 
 			if outputPath == "" {
 				fmt.Fprintln(out, html)
 				return nil
 			}
-
 			if err := os.WriteFile(outputPath, []byte(html), 0o644); err != nil {
 				return fmt.Errorf("writing %s: %w", outputPath, err)
 			}

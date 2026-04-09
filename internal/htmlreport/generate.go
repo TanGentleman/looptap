@@ -2,101 +2,117 @@ package htmlreport
 
 import (
 	"bytes"
+	"context"
 	"fmt"
-	"html/template"
-	"time"
+	"os"
+	"os/exec"
+	"strings"
 )
 
-// Generate returns a self-contained HTML page describing the branch. The AI
-// narrative isn't wired up yet — this is the skeleton the next step fills in.
-func Generate(r *Resolved) (string, error) {
+// Runner shells out to (or fakes) a claude print-mode invocation. Given a
+// working directory and the args to pass after the binary name, it returns
+// stdout. Keeping it as a function type makes test stubbing trivial.
+type Runner func(ctx context.Context, dir string, args []string) (string, error)
+
+// Generate asks claude, running headless in r.RepoPath, to produce a
+// self-contained HTML report describing the branch. A nil runner falls back
+// to the real `claude` binary on PATH (override with LOOPTAP_CLAUDE_BIN).
+func Generate(ctx context.Context, r *Resolved, runner Runner) (string, error) {
 	if r == nil {
 		return "", fmt.Errorf("generate: nil resolved settings")
 	}
-
-	data := struct {
-		Repo      string
-		Branch    string
-		Mode      BranchMode
-		Generated string
-	}{
-		Repo:      r.RepoPath,
-		Branch:    r.Branch,
-		Mode:      r.BranchMode,
-		Generated: time.Now().UTC().Format(time.RFC3339),
+	if runner == nil {
+		runner = defaultRunner
 	}
 
-	tmpl, err := template.New("report").Parse(baseTemplate)
+	args := buildClaudeArgs(r)
+	out, err := runner(ctx, r.RepoPath, args)
 	if err != nil {
-		return "", fmt.Errorf("parsing template: %w", err)
+		return "", err
 	}
 
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("executing template: %w", err)
+	html := stripFences(out)
+	if !looksLikeHTML(html) {
+		return "", fmt.Errorf("claude returned %d bytes but no HTML document — check your prompt or permissions", len(out))
 	}
-	return buf.String(), nil
+	return html, nil
 }
 
-const baseTemplate = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<title>looptap · branch report · {{.Branch}}</title>
-<style>
-  :root { color-scheme: light dark; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-    max-width: 740px;
-    margin: 4rem auto;
-    padding: 0 1.5rem;
-    line-height: 1.6;
-  }
-  header { border-bottom: 1px solid #888; padding-bottom: 1rem; margin-bottom: 2rem; }
-  h1 { margin: 0 0 .25rem; font-size: 1.75rem; }
-  h2 { margin-top: 2rem; font-size: 1.15rem; letter-spacing: .02em; text-transform: uppercase; color: #666; }
-  .meta { color: #666; font-size: .9rem; }
-  code { background: rgba(128,128,128,.15); padding: .1rem .35rem; border-radius: .25rem; font-size: .9em; }
-  .placeholder {
-    padding: 1rem 1.25rem;
-    border-left: 3px solid #888;
-    background: rgba(128,128,128,.08);
-    border-radius: .25rem;
-  }
-  ul.next li { margin: .25rem 0; }
-  footer { color: #888; font-size: .8rem; margin-top: 3rem; text-align: center; }
-</style>
-</head>
-<body>
-<header>
-  <h1>Branch report: <code>{{.Branch}}</code></h1>
-  <p class="meta">
-    repo <code>{{.Repo}}</code> ·
-    mode <code>{{.Mode}}</code> ·
-    generated <code>{{.Generated}}</code>
-  </p>
-</header>
+// buildClaudeArgs assembles the flags for `claude -p`. Read-only toolset,
+// permissions bypassed (we're running in a scratch subprocess), a hard turn
+// cap so a runaway agent can't burn the afternoon.
+func buildClaudeArgs(r *Resolved) []string {
+	return []string{
+		"-p", buildPrompt(r),
+		"--output-format", "text",
+		"--permission-mode", "bypassPermissions",
+		"--allowedTools", "Bash,Read,Glob,Grep",
+		"--append-system-prompt", systemAppend,
+		"--max-turns", "40",
+	}
+}
 
-<section>
-  <h2>Narrative</h2>
-  <div class="placeholder">
-    <p>AI-generated narrative not yet wired up. Once the analyzer lands, this
-    section will summarize what changed on this branch, why it matters, and
-    what reviewers should focus on.</p>
-  </div>
-</section>
+const systemAppend = `You are generating a one-shot HTML report for a development team. Your ENTIRE response must be a single self-contained HTML document — nothing before it, nothing after it, no markdown fences, no commentary. Start with <!doctype html> and end with </html>.`
 
-<section>
-  <h2>What's next</h2>
-  <ul class="next">
-    <li>Diff summary</li>
-    <li>Key commits</li>
-    <li>Risk callouts</li>
-    <li>Review checklist</li>
-  </ul>
-</section>
+func buildPrompt(r *Resolved) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Analyze the git branch `%s` in the current repository and produce a beautifully-designed, self-contained HTML page that tells the story of this branch to the rest of the dev team.\n\n", r.Branch)
+	b.WriteString("Steps:\n")
+	b.WriteString("1. Use `git` (via Bash) to find the base branch: try `git symbolic-ref refs/remotes/origin/HEAD`, then fall back to `main` or `master`. If the target branch IS the default, summarize the last ~20 commits instead of a diff.\n")
+	b.WriteString("2. Read the commit log, diff stats, and the actual changed files to understand WHY each change was made — not just what lines moved.\n")
+	b.WriteString("3. Draft a narrative: the problem, the approach, the tradeoffs, the risks, and what a reviewer should look at first.\n\n")
+	b.WriteString("Output — a single HTML document with:\n")
+	b.WriteString("- `<!doctype html>` at the top and `</html>` at the bottom. Nothing outside these tags.\n")
+	b.WriteString("- All CSS inline in a `<style>` tag. No external fonts, scripts, or images.\n")
+	b.WriteString("- `color-scheme: light dark` so it reads cleanly in both themes.\n")
+	b.WriteString("- Header with branch name, repo name, generated timestamp.\n")
+	b.WriteString("- Sections: narrative / summary, key commits, files changed with short per-file notes, risks and a review checklist.\n")
+	b.WriteString("- Tone: confident, concise, engineer-to-engineer. Not a status report for executives.\n")
+	b.WriteString("- Only report facts you actually found in git — no inventing commits, files, or contributors.\n")
+	return b.String()
+}
 
-<footer>generated by looptap · strace, but for vibes</footer>
-</body>
-</html>
-`
+// defaultRunner invokes the real `claude` binary. Honored env vars:
+//
+//	LOOPTAP_CLAUDE_BIN — override the binary name/path
+func defaultRunner(ctx context.Context, dir string, args []string) (string, error) {
+	bin := "claude"
+	if b := os.Getenv("LOOPTAP_CLAUDE_BIN"); b != "" {
+		bin = b
+	}
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Dir = dir
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%s -p failed: %w\nstderr: %s", bin, err, strings.TrimSpace(stderr.String()))
+	}
+	return stdout.String(), nil
+}
+
+// looksLikeHTML is a cheap sanity check that we got an HTML document back.
+func looksLikeHTML(s string) bool {
+	lower := strings.ToLower(s)
+	return strings.Contains(lower, "<html") || strings.Contains(lower, "<!doctype html")
+}
+
+// stripFences peels off a ```html ... ``` wrapper if claude added one despite
+// being told not to. Better to be forgiving than fail on a cosmetic nit.
+func stripFences(s string) string {
+	s = strings.TrimSpace(s)
+	if !strings.HasPrefix(s, "```") {
+		return s
+	}
+	// Drop the opening fence line (```html or just ```).
+	nl := strings.Index(s, "\n")
+	if nl == -1 {
+		return s
+	}
+	s = s[nl+1:]
+	// Drop the closing fence if present.
+	if idx := strings.LastIndex(s, "```"); idx != -1 {
+		s = s[:idx]
+	}
+	return strings.TrimSpace(s)
+}

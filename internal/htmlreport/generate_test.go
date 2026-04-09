@@ -1,54 +1,135 @@
 package htmlreport
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 )
 
-func TestGenerate(t *testing.T) {
+// recordingRunner captures whatever the caller asked it to run, so tests
+// can assert on the wiring without actually invoking claude.
+type recordingRunner struct {
+	out     string
+	err     error
+	gotDir  string
+	gotArgs []string
+	calls   int
+}
+
+func (r *recordingRunner) Run(ctx context.Context, dir string, args []string) (string, error) {
+	r.calls++
+	r.gotDir = dir
+	r.gotArgs = args
+	if r.err != nil {
+		return "", r.err
+	}
+	return r.out, nil
+}
+
+func (r *recordingRunner) asRunner() Runner {
+	return r.Run
+}
+
+func TestGenerate_PassesArgsAndDir(t *testing.T) {
 	r := &Resolved{
-		RepoPath:   "/path/to/repo",
+		RepoPath:   "/tmp/myrepo",
 		Branch:     "feature/x",
 		BranchMode: BranchCustom,
 	}
-	html, err := Generate(r)
+	rec := &recordingRunner{out: "<!doctype html><html><body>hi</body></html>"}
+
+	html, err := Generate(context.Background(), r, rec.asRunner())
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
+	if !strings.Contains(html, "<body>hi</body>") {
+		t.Errorf("unexpected output: %s", html)
+	}
+	if rec.gotDir != "/tmp/myrepo" {
+		t.Errorf("cwd = %q, want /tmp/myrepo", rec.gotDir)
+	}
 
+	joined := strings.Join(rec.gotArgs, " ")
 	wants := []string{
-		"<!doctype html>",
-		"/path/to/repo",
+		"-p",
 		"feature/x",
-		"custom",
-		"looptap",
-		"Branch report",
+		"--output-format text",
+		"--permission-mode bypassPermissions",
+		"--allowedTools Bash,Read,Glob,Grep",
+		"--append-system-prompt",
+		"--max-turns 40",
 	}
 	for _, w := range wants {
-		if !strings.Contains(html, w) {
-			t.Errorf("output missing %q", w)
+		if !strings.Contains(joined, w) {
+			t.Errorf("args missing %q\nfull: %s", w, joined)
 		}
 	}
 }
 
+func TestGenerate_StripsFences(t *testing.T) {
+	r := &Resolved{RepoPath: "/tmp/r", Branch: "main", BranchMode: BranchCurrent}
+	rec := &recordingRunner{out: "```html\n<!doctype html><html></html>\n```\n"}
+
+	html, err := Generate(context.Background(), r, rec.asRunner())
+	if err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	if strings.Contains(html, "```") {
+		t.Errorf("fences not stripped: %q", html)
+	}
+	if !strings.HasPrefix(html, "<!doctype html>") {
+		t.Errorf("expected html doctype, got: %q", html)
+	}
+}
+
+func TestGenerate_RejectsNonHTML(t *testing.T) {
+	r := &Resolved{RepoPath: "/tmp/r", Branch: "main", BranchMode: BranchCurrent}
+	rec := &recordingRunner{out: "I can't help with that."}
+	if _, err := Generate(context.Background(), r, rec.asRunner()); err == nil {
+		t.Error("expected error for non-HTML output")
+	}
+}
+
+func TestGenerate_PropagatesRunnerError(t *testing.T) {
+	r := &Resolved{RepoPath: "/tmp/r", Branch: "main", BranchMode: BranchCurrent}
+	rec := &recordingRunner{err: errors.New("boom")}
+	_, err := Generate(context.Background(), r, rec.asRunner())
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Errorf("expected boom error, got %v", err)
+	}
+}
+
 func TestGenerate_NilSettings(t *testing.T) {
-	if _, err := Generate(nil); err == nil {
+	if _, err := Generate(context.Background(), nil, (&recordingRunner{}).asRunner()); err == nil {
 		t.Error("expected error for nil settings")
 	}
 }
 
-func TestGenerate_EscapesBranchName(t *testing.T) {
-	// A malicious branch name shouldn't escape the template and inject raw HTML.
-	r := &Resolved{
-		RepoPath:   "/tmp/r",
-		Branch:     "<script>alert(1)</script>",
-		BranchMode: BranchCustom,
+func TestBuildPromptContainsEssentials(t *testing.T) {
+	r := &Resolved{RepoPath: "/tmp/r", Branch: "feature/x", BranchMode: BranchCustom}
+	p := strings.ToLower(buildPrompt(r))
+	for _, want := range []string{"feature/x", "<!doctype html>", "narrative", "review"} {
+		if !strings.Contains(p, strings.ToLower(want)) {
+			t.Errorf("prompt missing %q", want)
+		}
 	}
-	html, err := Generate(r)
-	if err != nil {
-		t.Fatalf("Generate: %v", err)
+}
+
+func TestStripFences(t *testing.T) {
+	tests := []struct {
+		name, in, want string
+	}{
+		{"no fences", "<html></html>", "<html></html>"},
+		{"html fence", "```html\n<html></html>\n```", "<html></html>"},
+		{"bare fence", "```\n<html></html>\n```", "<html></html>"},
+		{"trims whitespace", "  <html></html>  ", "<html></html>"},
 	}
-	if strings.Contains(html, "<script>alert(1)</script>") {
-		t.Error("branch name not HTML-escaped")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := stripFences(tt.in); got != tt.want {
+				t.Errorf("stripFences(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
 	}
 }

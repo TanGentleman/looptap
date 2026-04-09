@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bytes"
+	"context"
+	"looptap/internal/htmlreport"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -9,11 +11,30 @@ import (
 	"testing"
 )
 
+// fakeRunner stands in for the real claude subprocess in cmd tests. It lets
+// us verify the command path end-to-end without touching a real binary.
+type fakeRunner struct {
+	html  string
+	err   error
+	calls int
+}
+
+func (f *fakeRunner) runner() htmlreport.Runner {
+	return func(ctx context.Context, dir string, args []string) (string, error) {
+		f.calls++
+		if f.err != nil {
+			return "", f.err
+		}
+		return f.html, nil
+	}
+}
+
 func TestHTMLCmd_ForceWritesFile(t *testing.T) {
 	repo := initRepoForCmdTest(t)
 	out := filepath.Join(t.TempDir(), "report.html")
 
-	cmd := NewHTMLCmd()
+	fake := &fakeRunner{html: "<!doctype html><html><body>hi main</body></html>"}
+	cmd := newHTMLCmd(fake.runner())
 	cmd.SetArgs([]string{"--repo", repo, "--branch", "current", "--output", out, "--force"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -26,13 +47,9 @@ func TestHTMLCmd_ForceWritesFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading output: %v", err)
 	}
-	if !strings.Contains(string(body), "main") {
-		t.Errorf("report missing branch name: %s", body)
+	if !strings.Contains(string(body), "<body>hi main</body>") {
+		t.Errorf("report missing expected body: %s", body)
 	}
-	if !strings.Contains(string(body), "<!doctype html>") {
-		t.Error("report missing doctype")
-	}
-
 	stdout := buf.String()
 	if !strings.Contains(stdout, "--force") {
 		t.Errorf("stdout missing --force notice: %s", stdout)
@@ -43,13 +60,17 @@ func TestHTMLCmd_ForceWritesFile(t *testing.T) {
 	if !strings.Contains(stdout, "branch: main") {
 		t.Errorf("stdout missing resolved summary: %s", stdout)
 	}
+	if fake.calls != 1 {
+		t.Errorf("runner calls = %d, want 1", fake.calls)
+	}
 }
 
 func TestHTMLCmd_ConfirmNoAborts(t *testing.T) {
 	repo := initRepoForCmdTest(t)
 	out := filepath.Join(t.TempDir(), "report.html")
+	fake := &fakeRunner{html: "<!doctype html><html></html>"}
 
-	cmd := NewHTMLCmd()
+	cmd := newHTMLCmd(fake.runner())
 	cmd.SetArgs([]string{"--repo", repo, "--output", out})
 	cmd.SetIn(strings.NewReader("n\n"))
 	var buf bytes.Buffer
@@ -64,13 +85,17 @@ func TestHTMLCmd_ConfirmNoAborts(t *testing.T) {
 	if _, err := os.Stat(out); !os.IsNotExist(err) {
 		t.Errorf("expected no output file after abort, got err=%v", err)
 	}
+	if fake.calls != 0 {
+		t.Errorf("runner should not have been called, got %d", fake.calls)
+	}
 }
 
 func TestHTMLCmd_ConfirmYesProceeds(t *testing.T) {
 	repo := initRepoForCmdTest(t)
 	out := filepath.Join(t.TempDir(), "report.html")
+	fake := &fakeRunner{html: "<!doctype html><html></html>"}
 
-	cmd := NewHTMLCmd()
+	cmd := newHTMLCmd(fake.runner())
 	cmd.SetArgs([]string{"--repo", repo, "--output", out})
 	cmd.SetIn(strings.NewReader("y\n"))
 	var buf bytes.Buffer
@@ -82,10 +107,14 @@ func TestHTMLCmd_ConfirmYesProceeds(t *testing.T) {
 	if _, err := os.Stat(out); err != nil {
 		t.Errorf("expected output file, got err=%v", err)
 	}
+	if fake.calls != 1 {
+		t.Errorf("runner calls = %d, want 1", fake.calls)
+	}
 }
 
 func TestHTMLCmd_InvalidRepo(t *testing.T) {
-	cmd := NewHTMLCmd()
+	fake := &fakeRunner{html: "<!doctype html><html></html>"}
+	cmd := newHTMLCmd(fake.runner())
 	cmd.SetArgs([]string{"--repo", filepath.Join(t.TempDir(), "nope"), "--force"})
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
@@ -96,6 +125,9 @@ func TestHTMLCmd_InvalidRepo(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "does not exist") {
 		t.Errorf("wrong error: %v", err)
+	}
+	if fake.calls != 0 {
+		t.Errorf("runner should not have been called on bad repo, got %d", fake.calls)
 	}
 }
 
