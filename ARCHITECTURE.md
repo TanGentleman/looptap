@@ -188,6 +188,40 @@ CLAUDE.md → reader.go → prompt.go (assemble) → advise.Client → parse JSO
 
 **`analyze.go`** — Orchestrator. Reuses `advise.NewClient` rather than duplicating the Gemini wrapper. Strips the ```json fence, parses, returns `Finding`s.
 
+## HTML report (`internal/htmlreport/`)
+
+The `html` command points claude at a git branch and asks it to write a shareable story for the rest of the team. Unlike `advise` and `analyze`, the LLM is not called via an SDK — it's a plain subprocess invocation of the `claude` CLI in print mode.
+
+```
+HTMLSettings → resolve.go (filesystem + git) → Resolved → generate.go (claude -p) → HTML string
+```
+
+**`types.go`** — `HTMLSettings` is the user-facing knob bag: `RepoPath`, `BranchMode` (`current` | `default` | `custom`), `BranchName`. `Resolved` is the post-validation shape — absolute repo path, concrete branch name — and everything downstream reads from it. Keep `HTMLSettings` small; model name, tone, section toggles slot in as they earn their keep.
+
+**`resolve.go`** — Verifies the repo path exists, is a directory, and is actually a git repo (`git rev-parse --show-toplevel`). Then resolves the branch: `current` reads HEAD and errors on detached state; `default` tries `origin/HEAD` and falls back to `main`/`master`; `custom` verifies the branch exists locally or on `origin`. `ParseBranchFlag` turns the raw `--branch`/`LOOPTAP_BRANCH` string into a `(mode, name)` pair.
+
+**`generate.go`** — Shells out to `claude -p` via an injectable `Runner` seam:
+
+```go
+type Runner func(ctx context.Context, dir string, args []string) (string, error)
+func Generate(ctx context.Context, r *Resolved, runner Runner) (string, error)
+```
+
+A nil runner uses the real `claude` binary on PATH (override with `LOOPTAP_CLAUDE_BIN`); tests pass a fake. Args are assembled in `buildClaudeArgs`:
+
+```
+claude -p <prompt>
+  --output-format text
+  --permission-mode bypassPermissions
+  --allowedTools Bash,Read,Glob,Grep
+  --append-system-prompt <HTML-only instruction>
+  --max-turns 40
+```
+
+The working directory is set to `r.RepoPath`, so git Just Works. The prompt walks claude through finding the base branch, reading the diff and changed files, and writing narrative + commits + files + risks into a single self-contained `<!doctype html>…</html>` document with inline CSS. `stripFences` forgives a stray ```html wrapper; `looksLikeHTML` rejects anything that doesn't look like a document so we fail loudly instead of writing plain text to disk.
+
+The cobra wiring in `cmd/html.go` stays thin: flag/env resolution, confirmation prompt (skipped by `--force`), one `Generate` call, then either stdout or `-o file`.
+
 ## Config (`~/.looptap/config.toml`)
 
 ```toml
@@ -249,6 +283,9 @@ internal/analyze/analyze.go    # CLAUDE.md quality reviewer
 internal/analyze/reader.go     # file I/O + default path resolution
 internal/analyze/prompt.go     # quality-review prompt templates
 internal/analyze/types.go      # Finding, AnalyzeResult
+internal/htmlreport/types.go     # HTMLSettings, Resolved, BranchMode
+internal/htmlreport/resolve.go   # repo + branch validation
+internal/htmlreport/generate.go  # claude -p subprocess + prompt
 phrases/*.txt                  # embedded phrase lists
 testdata/                      # fixture transcripts
 ```
