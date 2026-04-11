@@ -188,6 +188,33 @@ CLAUDE.md → reader.go → prompt.go (assemble) → advise.Client → parse JSO
 
 **`analyze.go`** — Orchestrator. Reuses `advise.NewClient` rather than duplicating the Gemini wrapper. Strips the ```json fence, parses, returns `Finding`s.
 
+## HTML reporter (`internal/htmlreport/`)
+
+The `html` command is the oddball in this bunch — it doesn't touch the SQLite DB at all. It points Claude Code (the CLI, running headless) at a git branch and asks it to write a self-contained HTML report for the dev team.
+
+```
+flags/env → Resolve(HTMLSettings) → Resolved → Generate(ctx, resolved, runner) → claude -p → HTML string
+```
+
+**`types.go`** — `HTMLSettings` (RepoPath + BranchMode + BranchName) is the user-facing knob bag; `Resolved` is the post-validation concrete pair. `BranchMode` is `current | default | custom`. More knobs (model, tone, sections) will land here when they earn their keep.
+
+**`resolve.go`** — Validates the repo via `git rev-parse --show-toplevel` and resolves the branch. `current` reads HEAD; `default` tries `origin/HEAD` then falls back to `main`/`master`; `custom` verifies the branch exists locally or on origin. `ParseBranchFlag` maps the raw `--branch` value (or `LOOPTAP_BRANCH`) into a mode + name.
+
+**`generate.go`** — Builds the prompt and shells out to `claude -p` via an injectable `Runner func` seam. Production uses `defaultRunner`, which calls the real `claude` binary (override with `LOOPTAP_CLAUDE_BIN`); tests pass fakes. Flags sent to claude:
+
+```
+-p <prompt>
+--output-format text
+--permission-mode bypassPermissions
+--allowedTools Bash,Read,Glob,Grep
+--append-system-prompt <HTML-only instruction>
+--max-turns 40
+```
+
+`stripFences()` tolerates claude wrapping the output in ` ```html ... ``` ` despite instructions not to. `looksLikeHTML()` is a cheap sanity check that we got a document back.
+
+This is the one command in looptap that needs the Claude Code CLI on PATH — everything else talks to Gemini directly via the Go SDK.
+
 ## Config (`~/.looptap/config.toml`)
 
 ```toml
@@ -249,6 +276,9 @@ internal/analyze/analyze.go    # CLAUDE.md quality reviewer
 internal/analyze/reader.go     # file I/O + default path resolution
 internal/analyze/prompt.go     # quality-review prompt templates
 internal/analyze/types.go      # Finding, AnalyzeResult
+internal/htmlreport/types.go       # HTMLSettings, Resolved, BranchMode
+internal/htmlreport/resolve.go     # repo + branch validation via git
+internal/htmlreport/generate.go    # claude -p subprocess + prompt
 phrases/*.txt                  # embedded phrase lists
 testdata/                      # fixture transcripts
 ```
