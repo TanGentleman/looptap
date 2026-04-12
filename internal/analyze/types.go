@@ -12,7 +12,7 @@ type Finding struct {
 	Title      string   `json:"title"`
 	Body       string   `json:"body"`       // what's wrong and why it matters
 	Severity   string   `json:"severity"`   // "high", "medium", "low", "info"
-	Category   string   `json:"category"`   // "clarity", "completeness", "consistency", "structure"
+	Category   string   `json:"category"`   // "clarity", "completeness", "consistency", "structure", "actionability"
 	Suggestion string   `json:"suggestion"` // concrete rewrite or addition, if applicable
 	Evidence   []string `json:"evidence"`   // lines or patterns that triggered the finding
 }

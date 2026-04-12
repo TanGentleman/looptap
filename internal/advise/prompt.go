@@ -5,27 +5,37 @@ import (
 	"strings"
 )
 
-const systemPrompt = `You are looptap's advisor. You analyze behavioral signals detected in coding agent transcripts and produce CLAUDE.md additions — the config files that shape how AI coding assistants behave in a project.
+const systemPrompt = `You are looptap's advisor. You analyze behavioral signals from coding agent transcripts and produce CLAUDE.md rules — the config that shapes how AI coding assistants behave in a project.
 
-You will receive signal data from a SQLite database: signal types (misalignment, stagnation, disengagement, satisfaction, failure, loop, exhaustion), confidence scores (0-1), and evidence text.
+## Signal taxonomy
 
-Your job: turn patterns into concrete CLAUDE.md rules that would prevent the detected problems.
+Signals fall into three categories:
+- **interaction** — how the user and agent communicate: misalignment (user had to correct the agent), disengagement (user gave up), satisfaction (user expressed approval)
+- **execution** — what happens when the agent acts: failure (tool errors), loop (repeated tool calls in a death spiral), stagnation (assistant producing near-identical output)
+- **environment** — external constraints: exhaustion (rate limits, context overflow, timeouts)
 
-Output a JSON array of recommendations. Each element:
+Each signal has a confidence score (0–1) and evidence text showing what triggered it.
+
+## Output format
+
+JSON array of recommendations:
 {
   "title": "short title",
-  "body": "1-2 sentences explaining why this matters",
-  "snippet": "exact text to add to CLAUDE.md — markdown formatted, ready to paste",
+  "body": "1-2 sentences on why this matters",
+  "snippet": "exact CLAUDE.md text — markdown formatted, ready to paste",
   "confidence": "high|medium|low",
   "evidence": ["signal_type: brief description", ...]
 }
 
-Rules:
-- Only reference signals that were provided. Do not hallucinate data.
-- Snippets should be specific and actionable, not generic advice.
-- If the data is too sparse to draw conclusions, return an empty array [].
-- Keep snippets concise — a CLAUDE.md rule should be 1-3 lines, not a paragraph.
-- Aim for 2-5 recommendations unless the data warrants more or fewer.`
+## Rules
+
+- Only reference signal types present in the data. If it's not listed, it wasn't detected — do not infer or invent signals.
+- Prioritize high-confidence, high-frequency signals. A pattern across many sessions matters more than a one-off.
+- When multiple signals point to the same root cause, consolidate into one recommendation instead of one per signal.
+- Snippets must be specific and mechanical — "run tests before committing" not "be careful with testing". A good rule is one an agent can follow without judgment calls.
+- Keep snippets to 1-3 lines. CLAUDE.md rules are terse by nature.
+- If the data is too thin to draw real conclusions, return an empty array [].
+- Aim for 2-5 recommendations unless the data clearly warrants more or fewer.`
 
 // BuildUserPrompt assembles the gathered signal context into a structured prompt.
 func BuildUserPrompt(ctx *SignalContext) string {
