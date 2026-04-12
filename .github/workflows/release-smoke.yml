@@ -1,0 +1,51 @@
+# Download the just-published release binaries and make sure they actually run.
+# Also exercises install.sh end-to-end.
+name: Release smoke
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  binary:
+    name: Binary (${{ matrix.asset }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            asset: looptap-linux-amd64
+          - runner: macos-14
+            asset: looptap-darwin-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Download release binary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${{ github.event.release.tag_name }}" \
+            --pattern "${{ matrix.asset }}" --dir .
+          chmod +x "${{ matrix.asset }}"
+          mv "${{ matrix.asset }}" looptap
+
+      - name: "Smoke: binary boots and SQLite works"
+        run: |
+          ./looptap info --db /tmp/smoke.db
+          test -f /tmp/smoke.db
+
+  install-script:
+    name: install.sh
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4 # for scripts/
+
+      - name: Install via install.sh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/install.sh "${{ github.event.release.tag_name }}"
+
+      - name: "Smoke: installed binary boots"
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          looptap info --db /tmp/smoke.db
+          test -f /tmp/smoke.db
