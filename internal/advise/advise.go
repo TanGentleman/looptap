@@ -39,10 +39,11 @@ func Run(ctx context.Context, database *db.DB, req AdviceRequest, apiKey, model 
 		return nil, fmt.Errorf("LLM call failed: %w", err)
 	}
 
-	// 4. Parse the response
+	// 4. Parse the response — pull the ```json fence out, fall back to
+	// wrapping raw text if the model went off-script.
 	var recs []Recommendation
-	if err := json.Unmarshal([]byte(gen.Text), &recs); err != nil {
-		// If the model didn't return clean JSON, wrap the whole thing
+	payload := ExtractJSONFence(gen.Text)
+	if err := json.Unmarshal([]byte(payload), &recs); err != nil {
 		recs = []Recommendation{{
 			Title:      "Raw advice",
 			Body:       gen.Text,
