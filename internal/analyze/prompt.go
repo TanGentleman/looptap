@@ -14,7 +14,7 @@ const systemPrompt = `You are looptap's CLAUDE.md quality reviewer. You analyze 
 
 ## Output format
 
-JSON array of findings:
+Wrap your response in a ` + "`" + `json` + "`" + ` fenced code block. JSON array of findings:
 {
   "title": "short title",
   "body": "1-2 sentences explaining the issue and why it matters",
