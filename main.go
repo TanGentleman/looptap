@@ -8,6 +8,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Version is stamped at build time via -ldflags.
+var Version = "dev"
+
 func main() {
 	var dbPath string
 
@@ -27,10 +30,21 @@ func main() {
 		cmd.NewAdviseCmd(&dbPath),
 		cmd.NewAnalyzeCmd(),
 		cmd.NewHTMLCmd(),
+		newVersionCmd(),
 	)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
+	}
+}
+
+func newVersionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the looptap version",
+		Run: func(cmd *cobra.Command, args []string) {
+			fmt.Fprintln(cmd.OutOrStdout(), Version)
+		},
 	}
 }
