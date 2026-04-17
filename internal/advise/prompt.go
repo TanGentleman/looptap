@@ -18,7 +18,7 @@ Each signal has a confidence score (0–1) and evidence text showing what trigge
 
 ## Output format
 
-JSON array of recommendations:
+Wrap your response in a ` + "`" + `json` + "`" + ` fenced code block. JSON array of recommendations:
 {
   "title": "short title",
   "body": "1-2 sentences on why this matters",

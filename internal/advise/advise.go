@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"looptap/internal/db"
@@ -39,9 +40,10 @@ func Run(ctx context.Context, database *db.DB, req AdviceRequest, apiKey, model 
 		return nil, fmt.Errorf("LLM call failed: %w", err)
 	}
 
-	// 4. Parse the response
+	// 4. Parse the response — strip ```json fences if present.
+	body := extractJSONFence(gen.Text)
 	var recs []Recommendation
-	if err := json.Unmarshal([]byte(gen.Text), &recs); err != nil {
+	if err := json.Unmarshal([]byte(body), &recs); err != nil {
 		// If the model didn't return clean JSON, wrap the whole thing
 		recs = []Recommendation{{
 			Title:      "Raw advice",
@@ -92,4 +94,20 @@ func appendUsage(u *Usage) error {
 	}
 	_, err = fmt.Fprintf(f, "%s\n", line)
 	return err
+}
+
+// extractJSONFence returns the contents of the first ```json ... ``` block,
+// falling back to the trimmed input if no fence is found.
+func extractJSONFence(s string) string {
+	const open = "```json"
+	start := strings.Index(s, open)
+	if start == -1 {
+		return strings.TrimSpace(s)
+	}
+	rest := s[start+len(open):]
+	end := strings.Index(rest, "```")
+	if end == -1 {
+		return strings.TrimSpace(rest)
+	}
+	return strings.TrimSpace(rest[:end])
 }

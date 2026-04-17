@@ -184,7 +184,7 @@ CLAUDE.md → reader.go → prompt.go (assemble) → advise.Client → parse JSO
 
 **`reader.go`** — Reads the target file (default `~/.claude/CLAUDE.md`). User-facing errors for missing/empty files.
 
-**`prompt.go`** — System prompt frames the LLM as a quality reviewer (clarity, completeness, consistency, structure, actionability). Output is JSON (enforced by the API's response MIME type).
+**`prompt.go`** — System prompt frames the LLM as a quality reviewer (clarity, completeness, consistency, structure, actionability) and asks for findings inside a ```json fence.
 
 **`analyze.go`** — Orchestrator. Reuses `advise.NewClient` rather than duplicating the Gemini wrapper. Strips the ```json fence, parses, returns `Finding`s.
 
