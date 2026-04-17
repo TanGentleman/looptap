@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+// Prompts live in prompt.go — systemAppend and buildPrompt.
+
 // Runner shells out to (or fakes) a claude print-mode invocation. Given a
 // working directory and the args to pass after the binary name, it returns
 // stdout. Keeping it as a function type makes test stubbing trivial.
@@ -50,26 +52,6 @@ func buildClaudeArgs(r *Resolved) []string {
 		"--append-system-prompt", systemAppend,
 		"--max-turns", "40",
 	}
-}
-
-const systemAppend = `You are generating a one-shot HTML report for a development team. Your ENTIRE response must be a single self-contained HTML document — nothing before it, nothing after it, no markdown fences, no commentary. Start with <!doctype html> and end with </html>.`
-
-func buildPrompt(r *Resolved) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Analyze the git branch `%s` in the current repository and produce a beautifully-designed, self-contained HTML page that tells the story of this branch to the rest of the dev team.\n\n", r.Branch)
-	b.WriteString("Steps:\n")
-	b.WriteString("1. Use `git` (via Bash) to find the base branch: try `git symbolic-ref refs/remotes/origin/HEAD`, then fall back to `main` or `master`. If the target branch IS the default, summarize the last ~20 commits instead of a diff.\n")
-	b.WriteString("2. Read the commit log, diff stats, and the actual changed files to understand WHY each change was made — not just what lines moved.\n")
-	b.WriteString("3. Draft a narrative: the problem, the approach, the tradeoffs, the risks, and what a reviewer should look at first.\n\n")
-	b.WriteString("Output — a single HTML document with:\n")
-	b.WriteString("- `<!doctype html>` at the top and `</html>` at the bottom. Nothing outside these tags.\n")
-	b.WriteString("- All CSS inline in a `<style>` tag. No external fonts, scripts, or images.\n")
-	b.WriteString("- `color-scheme: light dark` so it reads cleanly in both themes.\n")
-	b.WriteString("- Header with branch name, repo name, generated timestamp.\n")
-	b.WriteString("- Sections: narrative / summary, key commits, files changed with short per-file notes, risks and a review checklist.\n")
-	b.WriteString("- Tone: confident, concise, engineer-to-engineer. Not a status report for executives.\n")
-	b.WriteString("- Only report facts you actually found in git — no inventing commits, files, or contributors.\n")
-	return b.String()
 }
 
 // defaultRunner invokes the real `claude` binary. Honored env vars:

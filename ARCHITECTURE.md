@@ -200,6 +200,8 @@ HTMLSettings → resolve.go (filesystem + git) → Resolved → generate.go (cla
 
 **`resolve.go`** — Verifies the repo path exists, is a directory, and is actually a git repo (`git rev-parse --show-toplevel`). Then resolves the branch: `current` reads HEAD and errors on detached state; `default` tries `origin/HEAD` and falls back to `main`/`master`; `custom` verifies the branch exists locally or on `origin`. `ParseBranchFlag` turns the raw `--branch`/`LOOPTAP_BRANCH` string into a `(mode, name)` pair.
 
+**`prompt.go`** — System append (forces single-HTML output) and user prompt builder (branch analysis steps + output constraints).
+
 **`generate.go`** — Shells out to `claude -p` via an injectable `Runner` seam:
 
 ```go
@@ -221,6 +223,10 @@ claude -p <prompt>
 The working directory is set to `r.RepoPath`, so git Just Works. The prompt walks claude through finding the base branch, reading the diff and changed files, and writing narrative + commits + files + risks into a single self-contained `<!doctype html>…</html>` document with inline CSS. `stripFences` forgives a stray ```html wrapper; `looksLikeHTML` rejects anything that doesn't look like a document so we fail loudly instead of writing plain text to disk.
 
 The cobra wiring in `cmd/html.go` stays thin: flag/env resolution, confirmation prompt (skipped by `--force`), one `Generate` call, then either stdout or `-o file`.
+
+## Prompt convention
+
+Every package that talks to an LLM keeps its prompts in `prompt.go`. System prompts are `const` strings; user prompts are assembled by a `buildPrompt` or `BuildUserPrompt` function. This means "find every prompt" = `grep -l systemPrompt internal/*/prompt.go`.
 
 ## Config (`~/.looptap/config.toml`)
 
@@ -285,7 +291,11 @@ internal/analyze/prompt.go     # quality-review prompt templates
 internal/analyze/types.go      # Finding, AnalyzeResult
 internal/htmlreport/types.go     # HTMLSettings, Resolved, BranchMode
 internal/htmlreport/resolve.go   # repo + branch validation
-internal/htmlreport/generate.go  # claude -p subprocess + prompt
+internal/htmlreport/prompt.go    # HTML report prompt templates
+internal/htmlreport/generate.go  # claude -p subprocess invocation
 phrases/*.txt                  # embedded phrase lists
 testdata/                      # fixture transcripts
+.github/workflows/ci.yml        # build + test on push/PR
+.github/workflows/release.yml   # tag-triggered binary releases
+.github/workflows/release-smoke.yml  # post-release binary + install.sh smoke tests
 ```
