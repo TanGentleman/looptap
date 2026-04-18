@@ -22,3 +22,6 @@ Thumbs.db
 
 # Go build cache (shouldn't be here, but just in case)
 /vendor/
+
+.venv/
+__pycache__/
