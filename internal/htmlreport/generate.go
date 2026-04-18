@@ -102,7 +102,9 @@ func runClaude(ctx context.Context, dir string, args []string) (string, error) {
 }
 
 // runOpencode invokes the real `opencode` binary with OPENCODE_CONFIG set
-// to the user-supplied JSON config.
+// to the user-supplied JSON config. An empty cfgPath means "use the embedded
+// DefaultOpencodeConfig" — we materialize it to a tempfile for the duration
+// of this call.
 //
 // Honored env vars:
 //
@@ -112,6 +114,23 @@ func runOpencode(ctx context.Context, dir string, args []string, cfgPath string)
 	if b := os.Getenv("LOOPTAP_OPENCODE_BIN"); b != "" {
 		bin = b
 	}
+
+	if cfgPath == "" {
+		f, err := os.CreateTemp("", "looptap-opencode-*.json")
+		if err != nil {
+			return "", fmt.Errorf("tempfile for default opencode config: %w", err)
+		}
+		defer os.Remove(f.Name())
+		if _, err := f.Write(DefaultOpencodeConfig); err != nil {
+			f.Close()
+			return "", fmt.Errorf("writing default opencode config: %w", err)
+		}
+		if err := f.Close(); err != nil {
+			return "", fmt.Errorf("closing default opencode config: %w", err)
+		}
+		cfgPath = f.Name()
+	}
+
 	env := append(os.Environ(), "OPENCODE_CONFIG="+cfgPath)
 	return runBin(ctx, bin, dir, args, env)
 }

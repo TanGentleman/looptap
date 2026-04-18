@@ -153,7 +153,9 @@ func TestHTMLCmd_OpencodeAgent(t *testing.T) {
 	}
 }
 
-func TestHTMLCmd_OpencodeMissingConfig(t *testing.T) {
+func TestHTMLCmd_OpencodeDefaultConfig(t *testing.T) {
+	// No --opencode-config → fall back to the embedded default. The cmd
+	// should still run; the Summary should advertise the built-in default.
 	repo := initRepoForCmdTest(t)
 	fake := &fakeRunner{html: "<!doctype html><html></html>"}
 	cmd := newHTMLCmd(fake.runner())
@@ -161,15 +163,14 @@ func TestHTMLCmd_OpencodeMissingConfig(t *testing.T) {
 	var buf bytes.Buffer
 	cmd.SetOut(&buf)
 	cmd.SetErr(&buf)
-	err := cmd.Execute()
-	if err == nil {
-		t.Fatal("expected error when --opencode-config missing")
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
 	}
-	if !strings.Contains(err.Error(), "opencode-config") {
-		t.Errorf("wrong error: %v", err)
+	if !strings.Contains(buf.String(), "built-in default") {
+		t.Errorf("stdout missing default-config marker: %s", buf.String())
 	}
-	if fake.calls != 0 {
-		t.Errorf("runner should not have been called, got %d", fake.calls)
+	if fake.calls != 1 {
+		t.Errorf("runner calls = %d, want 1", fake.calls)
 	}
 }
 

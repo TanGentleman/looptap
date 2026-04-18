@@ -61,19 +61,23 @@ func ParseAgentFlag(raw string) Agent {
 }
 
 // resolveAgentConfig validates per-agent prerequisites. Claude needs nothing
-// beyond a binary on PATH; opencode needs a real JSON config file so we can
-// hand it to the subprocess via OPENCODE_CONFIG.
+// beyond a binary on PATH; opencode needs a JSON config file — either an
+// explicit --opencode-config path, or nothing (in which case we fall back to
+// the embedded DefaultOpencodeConfig, materialized to a tempfile at run time).
 func resolveAgentConfig(agent Agent, path string) (string, error) {
 	switch agent {
 	case AgentClaude:
 		return "", nil
 	case AgentOpencode:
-		if strings.TrimSpace(path) == "" {
-			return "", fmt.Errorf("opencode agent requires --opencode-config (or LOOPTAP_OPENCODE_CONFIG) pointing to a JSON config file")
+		trimmed := strings.TrimSpace(path)
+		if trimmed == "" {
+			// Empty means "use the built-in default config". The runner
+			// materializes DefaultOpencodeConfig to a tempfile at exec time.
+			return "", nil
 		}
-		abs, err := filepath.Abs(path)
+		abs, err := filepath.Abs(trimmed)
 		if err != nil {
-			return "", fmt.Errorf("resolving opencode config %q: %w", path, err)
+			return "", fmt.Errorf("resolving opencode config %q: %w", trimmed, err)
 		}
 		fi, err := os.Stat(abs)
 		if os.IsNotExist(err) {

@@ -43,8 +43,12 @@ type Resolved struct {
 // Summary is the short blurb we print for the confirmation prompt.
 func (r *Resolved) Summary() string {
 	s := fmt.Sprintf("repo:   %s\nbranch: %s (%s)\nagent:  %s", r.RepoPath, r.Branch, r.BranchMode, r.Agent)
-	if r.Agent == AgentOpencode && r.OpencodeConfigPath != "" {
-		s += fmt.Sprintf("\nconfig: %s", r.OpencodeConfigPath)
+	if r.Agent == AgentOpencode {
+		cfg := r.OpencodeConfigPath
+		if cfg == "" {
+			cfg = "(built-in default)"
+		}
+		s += fmt.Sprintf("\nconfig: %s", cfg)
 	}
 	return s
 }

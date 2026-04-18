@@ -39,15 +39,17 @@ repo, with read-only tools so it can poke at git. Two agents are supported:
 
   claude    ` + "`claude -p`" + ` with --permission-mode bypassPermissions (default)
   opencode  ` + "`opencode run`" + ` with --dangerously-skip-permissions
-            (requires --opencode-config pointing to a JSON config file;
-            the path is passed via OPENCODE_CONFIG so allowed-tools, model,
-            and provider credentials all live in that file)
+            (point --opencode-config at a JSON config to override; without one
+            we fall back to a built-in read-only default — read/glob/grep/list/
+            bash allow, edit/webfetch/websearch deny. Allowed tools, model, and
+            provider credentials all live in the config file; see
+            internal/htmlreport/opencode.default.json as a template.)
 
 Repo, branch, and agent may be set via flags or environment variables:
   LOOPTAP_REPO_PATH         path to a git repo (default: cwd)
   LOOPTAP_BRANCH            current | default | <branch-name> (default: current)
   LOOPTAP_AGENT             claude | opencode (default: claude)
-  LOOPTAP_OPENCODE_CONFIG   path to opencode JSON config (required for opencode)
+  LOOPTAP_OPENCODE_CONFIG   path to opencode JSON config (default: built-in)
   LOOPTAP_CLAUDE_BIN        override the claude binary (default: claude on PATH)
   LOOPTAP_OPENCODE_BIN      override the opencode binary (default: opencode on PATH)
 
@@ -119,7 +121,7 @@ Use --force to skip the confirmation prompt.`,
 	cmd.Flags().StringVar(&branchFlag, "branch", "", "current | default | <branch-name> (default: current, env LOOPTAP_BRANCH)")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "write HTML to file (default: stdout)")
 	cmd.Flags().StringVar(&agentFlag, "agent", "", "claude | opencode (default: claude, env LOOPTAP_AGENT)")
-	cmd.Flags().StringVar(&opencodeConfigPath, "opencode-config", "", "path to opencode JSON config (required for --agent opencode, env LOOPTAP_OPENCODE_CONFIG)")
+	cmd.Flags().StringVar(&opencodeConfigPath, "opencode-config", "", "path to opencode JSON config (default: built-in read-only config, env LOOPTAP_OPENCODE_CONFIG)")
 	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation prompt")
 
 	return cmd

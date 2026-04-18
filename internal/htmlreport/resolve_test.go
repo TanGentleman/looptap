@@ -80,11 +80,17 @@ func TestParseAgentFlag(t *testing.T) {
 func TestResolve_OpencodeConfig(t *testing.T) {
 	repo := initTestRepo(t)
 
-	// Missing config path.
-	if _, err := Resolve(HTMLSettings{RepoPath: repo, Agent: AgentOpencode}); err == nil {
-		t.Error("expected error for missing opencode config path")
-	} else if !strings.Contains(err.Error(), "opencode-config") {
-		t.Errorf("wrong error: %v", err)
+	// Empty config path is fine — it means "use the embedded default".
+	// Summary() renders this as "(built-in default)".
+	r, err := Resolve(HTMLSettings{RepoPath: repo, Agent: AgentOpencode})
+	if err != nil {
+		t.Fatalf("empty config path should use default, got: %v", err)
+	}
+	if r.OpencodeConfigPath != "" {
+		t.Errorf("empty path should stay empty in Resolved, got %q", r.OpencodeConfigPath)
+	}
+	if !strings.Contains(r.Summary(), "built-in default") {
+		t.Errorf("Summary missing default marker: %s", r.Summary())
 	}
 
 	// Non-existent config file.
@@ -107,7 +113,7 @@ func TestResolve_OpencodeConfig(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte(`{"model":"anthropic/claude-sonnet-4-20250514"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	r, err := Resolve(HTMLSettings{RepoPath: repo, Agent: AgentOpencode, OpencodeConfigPath: cfg})
+	r, err = Resolve(HTMLSettings{RepoPath: repo, Agent: AgentOpencode, OpencodeConfigPath: cfg})
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}

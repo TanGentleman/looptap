@@ -22,10 +22,15 @@ looptap html       # hand a branch to a coding agent, get a shareable HTML repor
 # default: Claude Code
 looptap html --repo /path/to/repo --branch current --output report.html --force
 
-# opencode — allowed tools, model, and provider keys live in the JSON config
+# opencode with the built-in read-only config (ANTHROPIC_API_KEY from env)
+looptap html --agent opencode --repo /path/to/repo --output report.html --force
+
+# opencode with your own config (model, provider creds, tool allowlist, etc.)
 looptap html --agent opencode --opencode-config ./opencode.json \
   --repo /path/to/repo --output report.html --force
 ```
+
+Without `--opencode-config`, looptap ships an embedded default that allows `read`/`glob`/`grep`/`list`/`bash` and denies `edit`/`webfetch`/`websearch` — enough for the agent to poke at git without wandering off. Copy [`internal/htmlreport/opencode.default.json`](internal/htmlreport/opencode.default.json) as a starting point for your own.
 
 Repo, branch, agent, and opencode config also read from `LOOPTAP_REPO_PATH`, `LOOPTAP_BRANCH` (`current` | `default` | a branch name), `LOOPTAP_AGENT` (`claude` | `opencode`), and `LOOPTAP_OPENCODE_CONFIG`. Without `--force` you get a confirmation prompt showing the resolved repo, branch, and agent before anything runs.
 
