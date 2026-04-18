@@ -16,14 +16,16 @@ func NewHTMLCmd() *cobra.Command {
 }
 
 // newHTMLCmd lets tests inject a fake runner so they don't need to shell out
-// to a real `claude` binary. Production code calls NewHTMLCmd, which passes
-// nil and lets htmlreport.Generate fall back to the real claude on PATH.
+// to a real agent binary. Production code calls NewHTMLCmd, which passes nil
+// and lets htmlreport.Generate fall back to the real CLI on PATH.
 func newHTMLCmd(runner htmlreport.Runner) *cobra.Command {
 	var (
-		repoPath   string
-		branchFlag string
-		outputPath string
-		force      bool
+		repoPath           string
+		branchFlag         string
+		outputPath         string
+		agentFlag          string
+		opencodeConfigPath string
+		force              bool
 	)
 
 	cmd := &cobra.Command{
@@ -32,13 +34,22 @@ func newHTMLCmd(runner htmlreport.Runner) *cobra.Command {
 		Long: `Analyzes a git branch and writes a self-contained HTML page that
 communicates the branch narrative to the rest of the team.
 
-Under the hood this runs ` + "`claude -p`" + ` in headless mode inside the target
-repo, with read-only tools (Bash, Read, Glob, Grep) so it can poke at git.
+Under the hood this runs a coding-agent CLI in headless mode inside the target
+repo, with read-only tools so it can poke at git. Two agents are supported:
 
-Repo and branch may be set via flags or environment variables:
-  LOOPTAP_REPO_PATH   path to a git repo (default: cwd)
-  LOOPTAP_BRANCH      current | default | <branch-name> (default: current)
-  LOOPTAP_CLAUDE_BIN  override the claude binary (default: claude on PATH)
+  claude    ` + "`claude -p`" + ` with --permission-mode bypassPermissions (default)
+  opencode  ` + "`opencode run`" + ` with --dangerously-skip-permissions
+            (requires --opencode-config pointing to a JSON config file;
+            the path is passed via OPENCODE_CONFIG so allowed-tools, model,
+            and provider credentials all live in that file)
+
+Repo, branch, and agent may be set via flags or environment variables:
+  LOOPTAP_REPO_PATH         path to a git repo (default: cwd)
+  LOOPTAP_BRANCH            current | default | <branch-name> (default: current)
+  LOOPTAP_AGENT             claude | opencode (default: claude)
+  LOOPTAP_OPENCODE_CONFIG   path to opencode JSON config (required for opencode)
+  LOOPTAP_CLAUDE_BIN        override the claude binary (default: claude on PATH)
+  LOOPTAP_OPENCODE_BIN      override the opencode binary (default: opencode on PATH)
 
 Use --force to skip the confirmation prompt.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -49,12 +60,21 @@ Use --force to skip the confirmation prompt.`,
 			if branchFlag == "" {
 				branchFlag = os.Getenv("LOOPTAP_BRANCH")
 			}
+			if agentFlag == "" {
+				agentFlag = os.Getenv("LOOPTAP_AGENT")
+			}
+			if opencodeConfigPath == "" {
+				opencodeConfigPath = os.Getenv("LOOPTAP_OPENCODE_CONFIG")
+			}
 
 			mode, name := htmlreport.ParseBranchFlag(branchFlag)
+			agent := htmlreport.ParseAgentFlag(agentFlag)
 			resolved, err := htmlreport.Resolve(htmlreport.HTMLSettings{
-				RepoPath:   repoPath,
-				BranchMode: mode,
-				BranchName: name,
+				RepoPath:           repoPath,
+				BranchMode:         mode,
+				BranchName:         name,
+				Agent:              agent,
+				OpencodeConfigPath: opencodeConfigPath,
 			})
 			if err != nil {
 				return err
@@ -77,7 +97,7 @@ Use --force to skip the confirmation prompt.`,
 				}
 			}
 
-			fmt.Fprintln(out, "Asking claude... (this can take a minute)")
+			fmt.Fprintf(out, "Asking %s... (this can take a minute)\n", resolved.Agent)
 			html, err := htmlreport.Generate(cmd.Context(), resolved, runner)
 			if err != nil {
 				return fmt.Errorf("generating HTML: %w", err)
@@ -98,6 +118,8 @@ Use --force to skip the confirmation prompt.`,
 	cmd.Flags().StringVar(&repoPath, "repo", "", "path to a git repo (default: cwd, env LOOPTAP_REPO_PATH)")
 	cmd.Flags().StringVar(&branchFlag, "branch", "", "current | default | <branch-name> (default: current, env LOOPTAP_BRANCH)")
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "write HTML to file (default: stdout)")
+	cmd.Flags().StringVar(&agentFlag, "agent", "", "claude | opencode (default: claude, env LOOPTAP_AGENT)")
+	cmd.Flags().StringVar(&opencodeConfigPath, "opencode-config", "", "path to opencode JSON config (required for --agent opencode, env LOOPTAP_OPENCODE_CONFIG)")
 	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation prompt")
 
 	return cmd

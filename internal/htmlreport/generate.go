@@ -11,23 +11,24 @@ import (
 
 // Prompts live in prompt.go — systemAppend and buildPrompt.
 
-// Runner shells out to (or fakes) a claude print-mode invocation. Given a
-// working directory and the args to pass after the binary name, it returns
-// stdout. Keeping it as a function type makes test stubbing trivial.
+// Runner shells out to (or fakes) an agent invocation. Given a working
+// directory and the args to pass after the binary name, it returns stdout.
+// The binary and any agent-specific env (e.g. OPENCODE_CONFIG) are decided
+// inside the runner so the seam stays dumb and test-friendly.
 type Runner func(ctx context.Context, dir string, args []string) (string, error)
 
-// Generate asks claude, running headless in r.RepoPath, to produce a
-// self-contained HTML report describing the branch. A nil runner falls back
-// to the real `claude` binary on PATH (override with LOOPTAP_CLAUDE_BIN).
+// Generate asks the configured agent, running headless in r.RepoPath, to
+// produce a self-contained HTML report describing the branch. A nil runner
+// falls back to the real binary on PATH for the selected agent.
 func Generate(ctx context.Context, r *Resolved, runner Runner) (string, error) {
 	if r == nil {
 		return "", fmt.Errorf("generate: nil resolved settings")
 	}
 	if runner == nil {
-		runner = defaultRunner
+		runner = defaultRunnerFor(r)
 	}
 
-	args := buildClaudeArgs(r)
+	args := buildArgsFor(r)
 	out, err := runner(ctx, r.RepoPath, args)
 	if err != nil {
 		return "", err
@@ -35,9 +36,17 @@ func Generate(ctx context.Context, r *Resolved, runner Runner) (string, error) {
 
 	html := stripFences(out)
 	if !looksLikeHTML(html) {
-		return "", fmt.Errorf("claude returned %d bytes but no HTML document — check your prompt or permissions", len(out))
+		return "", fmt.Errorf("%s returned %d bytes but no HTML document — check your prompt or permissions", r.Agent, len(out))
 	}
 	return html, nil
+}
+
+// buildArgsFor dispatches to the right arg builder for the agent.
+func buildArgsFor(r *Resolved) []string {
+	if r.Agent == AgentOpencode {
+		return buildOpencodeArgs(r)
+	}
+	return buildClaudeArgs(r)
 }
 
 // buildClaudeArgs assembles the flags for `claude -p`. Read-only toolset,
@@ -54,21 +63,71 @@ func buildClaudeArgs(r *Resolved) []string {
 	}
 }
 
-// defaultRunner invokes the real `claude` binary. Honored env vars:
+// buildOpencodeArgs assembles the flags for `opencode run`. Allowed tools,
+// model, and system prompt come from the user-supplied config file (plumbed
+// in via OPENCODE_CONFIG in the runner). `--system` overrides rather than
+// appends on opencode, so we fold the strict HTML-only instruction into the
+// user prompt instead of clobbering the config's system prompt.
+func buildOpencodeArgs(r *Resolved) []string {
+	prompt := systemAppend + "\n\n" + buildPrompt(r)
+	return []string{
+		"run", prompt,
+		"--dangerously-skip-permissions",
+	}
+}
+
+// defaultRunnerFor returns the real-binary runner appropriate for the agent.
+// Tests inject their own Runner and bypass this path entirely.
+func defaultRunnerFor(r *Resolved) Runner {
+	if r.Agent == AgentOpencode {
+		cfgPath := r.OpencodeConfigPath
+		return func(ctx context.Context, dir string, args []string) (string, error) {
+			return runOpencode(ctx, dir, args, cfgPath)
+		}
+	}
+	return runClaude
+}
+
+// runClaude invokes the real `claude` binary.
+//
+// Honored env vars:
 //
 //	LOOPTAP_CLAUDE_BIN — override the binary name/path
-func defaultRunner(ctx context.Context, dir string, args []string) (string, error) {
+func runClaude(ctx context.Context, dir string, args []string) (string, error) {
 	bin := "claude"
 	if b := os.Getenv("LOOPTAP_CLAUDE_BIN"); b != "" {
 		bin = b
 	}
+	return runBin(ctx, bin, dir, args, nil)
+}
+
+// runOpencode invokes the real `opencode` binary with OPENCODE_CONFIG set
+// to the user-supplied JSON config.
+//
+// Honored env vars:
+//
+//	LOOPTAP_OPENCODE_BIN — override the binary name/path
+func runOpencode(ctx context.Context, dir string, args []string, cfgPath string) (string, error) {
+	bin := "opencode"
+	if b := os.Getenv("LOOPTAP_OPENCODE_BIN"); b != "" {
+		bin = b
+	}
+	env := append(os.Environ(), "OPENCODE_CONFIG="+cfgPath)
+	return runBin(ctx, bin, dir, args, env)
+}
+
+// runBin is the shared exec wrapper. env==nil means inherit from the parent.
+func runBin(ctx context.Context, bin, dir string, args, env []string) (string, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
+	if env != nil {
+		cmd.Env = env
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("%s -p failed: %w\nstderr: %s", bin, err, strings.TrimSpace(stderr.String()))
+		return "", fmt.Errorf("%s failed: %w\nstderr: %s", bin, err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
 }
@@ -79,8 +138,9 @@ func looksLikeHTML(s string) bool {
 	return strings.Contains(lower, "<html") || strings.Contains(lower, "<!doctype html")
 }
 
-// stripFences peels off a ```html ... ``` wrapper if claude added one despite
-// being told not to. Better to be forgiving than fail on a cosmetic nit.
+// stripFences peels off a ```html ... ``` wrapper if the agent added one
+// despite being told not to. Better to be forgiving than fail on a cosmetic
+// nit.
 func stripFences(s string) string {
 	s = strings.TrimSpace(s)
 	if !strings.HasPrefix(s, "```") {

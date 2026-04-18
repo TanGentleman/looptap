@@ -11,24 +11,40 @@ const (
 	BranchCustom  BranchMode = "custom"  // use BranchName verbatim
 )
 
+// Agent selects which coding-agent CLI we shell out to.
+type Agent string
+
+const (
+	AgentClaude   Agent = "claude"   // `claude -p` (Claude Code)
+	AgentOpencode Agent = "opencode" // `opencode run` (sst/opencode)
+)
+
 // HTMLSettings is the user-facing knob bag for the html subcommand.
 // Keep it small until the AI layer actually needs more — model name, tone,
 // section toggles, etc. will land here as they earn their keep.
 type HTMLSettings struct {
-	RepoPath   string     // path to a git repo; "" means cwd
-	BranchMode BranchMode // current | default | custom
-	BranchName string     // only read when BranchMode == BranchCustom
+	RepoPath           string     // path to a git repo; "" means cwd
+	BranchMode         BranchMode // current | default | custom
+	BranchName         string     // only read when BranchMode == BranchCustom
+	Agent              Agent      // claude | opencode; "" defaults to claude
+	OpencodeConfigPath string     // path to opencode JSON config; required when Agent == AgentOpencode
 }
 
 // Resolved is HTMLSettings after we've poked the filesystem and asked git
 // what's really there. Everything downstream works off this.
 type Resolved struct {
-	RepoPath   string // absolute path, confirmed to be a git repo
-	BranchMode BranchMode
-	Branch     string // concrete branch name
+	RepoPath           string // absolute path, confirmed to be a git repo
+	BranchMode         BranchMode
+	Branch             string // concrete branch name
+	Agent              Agent  // concrete agent (claude or opencode)
+	OpencodeConfigPath string // absolute path to opencode config, or "" for claude
 }
 
 // Summary is the short blurb we print for the confirmation prompt.
 func (r *Resolved) Summary() string {
-	return fmt.Sprintf("repo:   %s\nbranch: %s (%s)", r.RepoPath, r.Branch, r.BranchMode)
+	s := fmt.Sprintf("repo:   %s\nbranch: %s (%s)\nagent:  %s", r.RepoPath, r.Branch, r.BranchMode, r.Agent)
+	if r.Agent == AgentOpencode && r.OpencodeConfigPath != "" {
+		s += fmt.Sprintf("\nconfig: %s", r.OpencodeConfigPath)
+	}
+	return s
 }

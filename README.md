@@ -13,16 +13,21 @@ looptap run        # parse transcripts + detect signals
 looptap info       # what'd we find?
 looptap advise     # ask Gemini for CLAUDE.md fixes based on your signals
 looptap analyze    # quality-review your ~/.claude/CLAUDE.md
-looptap html       # hand a branch to claude, get a shareable HTML report back
+looptap html       # hand a branch to a coding agent, get a shareable HTML report back
 ```
 
-`advise` and `analyze` need a Gemini API key — set `GOOGLE_API_KEY`. `html` shells out to the `claude` CLI in headless mode, so you'll need that on your PATH (override with `LOOPTAP_CLAUDE_BIN`).
+`advise` and `analyze` need a Gemini API key — set `GOOGLE_API_KEY`. `html` shells out to a coding-agent CLI in headless mode: either `claude` (the default, override with `LOOPTAP_CLAUDE_BIN`) or `opencode` (override with `LOOPTAP_OPENCODE_BIN`). Pick with `--agent`.
 
 ```bash
+# default: Claude Code
 looptap html --repo /path/to/repo --branch current --output report.html --force
+
+# opencode — allowed tools, model, and provider keys live in the JSON config
+looptap html --agent opencode --opencode-config ./opencode.json \
+  --repo /path/to/repo --output report.html --force
 ```
 
-Repo and branch also read from `LOOPTAP_REPO_PATH` and `LOOPTAP_BRANCH` (`current` | `default` | a branch name). Without `--force` you get a confirmation prompt showing the resolved repo and branch before anything runs.
+Repo, branch, agent, and opencode config also read from `LOOPTAP_REPO_PATH`, `LOOPTAP_BRANCH` (`current` | `default` | a branch name), `LOOPTAP_AGENT` (`claude` | `opencode`), and `LOOPTAP_OPENCODE_CONFIG`. Without `--force` you get a confirmation prompt showing the resolved repo, branch, and agent before anything runs.
 
 Browse the DB with datasette:
 

@@ -11,17 +11,19 @@ import (
 	"testing"
 )
 
-// fakeRunner stands in for the real claude subprocess in cmd tests. It lets
+// fakeRunner stands in for the real agent subprocess in cmd tests. It lets
 // us verify the command path end-to-end without touching a real binary.
 type fakeRunner struct {
-	html  string
-	err   error
-	calls int
+	html    string
+	err     error
+	calls   int
+	gotArgs []string
 }
 
 func (f *fakeRunner) runner() htmlreport.Runner {
 	return func(ctx context.Context, dir string, args []string) (string, error) {
 		f.calls++
+		f.gotArgs = args
 		if f.err != nil {
 			return "", f.err
 		}
@@ -109,6 +111,65 @@ func TestHTMLCmd_ConfirmYesProceeds(t *testing.T) {
 	}
 	if fake.calls != 1 {
 		t.Errorf("runner calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestHTMLCmd_OpencodeAgent(t *testing.T) {
+	repo := initRepoForCmdTest(t)
+	cfg := filepath.Join(t.TempDir(), "opencode.json")
+	if err := os.WriteFile(cfg, []byte(`{"model":"anthropic/claude-sonnet-4-20250514"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fake := &fakeRunner{html: "<!doctype html><html><body>oc</body></html>"}
+	cmd := newHTMLCmd(fake.runner())
+	cmd.SetArgs([]string{
+		"--repo", repo,
+		"--agent", "opencode",
+		"--opencode-config", cfg,
+		"--force",
+	})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	stdout := buf.String()
+	if !strings.Contains(stdout, "agent:  opencode") {
+		t.Errorf("stdout missing opencode agent summary: %s", stdout)
+	}
+	if !strings.Contains(stdout, cfg) {
+		t.Errorf("stdout missing config path: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Asking opencode") {
+		t.Errorf("stdout missing 'Asking opencode' line: %s", stdout)
+	}
+	if fake.calls != 1 {
+		t.Errorf("runner calls = %d, want 1", fake.calls)
+	}
+	if len(fake.gotArgs) == 0 || fake.gotArgs[0] != "run" {
+		t.Errorf("expected first arg to be 'run', got %v", fake.gotArgs)
+	}
+}
+
+func TestHTMLCmd_OpencodeMissingConfig(t *testing.T) {
+	repo := initRepoForCmdTest(t)
+	fake := &fakeRunner{html: "<!doctype html><html></html>"}
+	cmd := newHTMLCmd(fake.runner())
+	cmd.SetArgs([]string{"--repo", repo, "--agent", "opencode", "--force"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error when --opencode-config missing")
+	}
+	if !strings.Contains(err.Error(), "opencode-config") {
+		t.Errorf("wrong error: %v", err)
+	}
+	if fake.calls != 0 {
+		t.Errorf("runner should not have been called, got %d", fake.calls)
 	}
 }
 

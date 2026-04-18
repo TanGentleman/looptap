@@ -37,12 +37,109 @@ func TestParseBranchFlag(t *testing.T) {
 }
 
 func TestResolved_Summary(t *testing.T) {
-	r := &Resolved{RepoPath: "/tmp/r", Branch: "main", BranchMode: BranchCurrent}
+	r := &Resolved{RepoPath: "/tmp/r", Branch: "main", BranchMode: BranchCurrent, Agent: AgentClaude}
 	s := r.Summary()
-	for _, want := range []string{"/tmp/r", "main", "current"} {
+	for _, want := range []string{"/tmp/r", "main", "current", "claude"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("summary missing %q: %s", want, s)
 		}
+	}
+
+	oc := &Resolved{RepoPath: "/tmp/r", Branch: "main", BranchMode: BranchCurrent, Agent: AgentOpencode, OpencodeConfigPath: "/tmp/opencode.json"}
+	os := oc.Summary()
+	for _, want := range []string{"opencode", "/tmp/opencode.json"} {
+		if !strings.Contains(os, want) {
+			t.Errorf("opencode summary missing %q: %s", want, os)
+		}
+	}
+}
+
+func TestParseAgentFlag(t *testing.T) {
+	tests := []struct {
+		in   string
+		want Agent
+	}{
+		{"", AgentClaude},
+		{"claude", AgentClaude},
+		{"CLAUDE", AgentClaude},
+		{"  claude  ", AgentClaude},
+		{"claude-code", AgentClaude},
+		{"opencode", AgentOpencode},
+		{"OpenCode", AgentOpencode},
+		{"bogus", Agent("bogus")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.in, func(t *testing.T) {
+			if got := ParseAgentFlag(tt.in); got != tt.want {
+				t.Errorf("ParseAgentFlag(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolve_OpencodeConfig(t *testing.T) {
+	repo := initTestRepo(t)
+
+	// Missing config path.
+	if _, err := Resolve(HTMLSettings{RepoPath: repo, Agent: AgentOpencode}); err == nil {
+		t.Error("expected error for missing opencode config path")
+	} else if !strings.Contains(err.Error(), "opencode-config") {
+		t.Errorf("wrong error: %v", err)
+	}
+
+	// Non-existent config file.
+	if _, err := Resolve(HTMLSettings{RepoPath: repo, Agent: AgentOpencode, OpencodeConfigPath: filepath.Join(t.TempDir(), "nope.json")}); err == nil {
+		t.Error("expected error for missing config file")
+	} else if !strings.Contains(err.Error(), "does not exist") {
+		t.Errorf("wrong error: %v", err)
+	}
+
+	// Directory where a file should be.
+	dir := t.TempDir()
+	if _, err := Resolve(HTMLSettings{RepoPath: repo, Agent: AgentOpencode, OpencodeConfigPath: dir}); err == nil {
+		t.Error("expected error for config path that is a directory")
+	} else if !strings.Contains(err.Error(), "directory") {
+		t.Errorf("wrong error: %v", err)
+	}
+
+	// Happy path: real file gets absolute-path-ized.
+	cfg := filepath.Join(t.TempDir(), "opencode.json")
+	if err := os.WriteFile(cfg, []byte(`{"model":"anthropic/claude-sonnet-4-20250514"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Resolve(HTMLSettings{RepoPath: repo, Agent: AgentOpencode, OpencodeConfigPath: cfg})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if r.Agent != AgentOpencode {
+		t.Errorf("Agent = %q, want opencode", r.Agent)
+	}
+	if !filepath.IsAbs(r.OpencodeConfigPath) {
+		t.Errorf("OpencodeConfigPath not absolute: %q", r.OpencodeConfigPath)
+	}
+	if filepath.Base(r.OpencodeConfigPath) != "opencode.json" {
+		t.Errorf("OpencodeConfigPath basename = %q, want opencode.json", r.OpencodeConfigPath)
+	}
+
+	// Unknown agent.
+	if _, err := Resolve(HTMLSettings{RepoPath: repo, Agent: Agent("bogus")}); err == nil {
+		t.Error("expected error for unknown agent")
+	} else if !strings.Contains(err.Error(), "unknown agent") {
+		t.Errorf("wrong error: %v", err)
+	}
+}
+
+func TestResolve_DefaultsToClaude(t *testing.T) {
+	repo := initTestRepo(t)
+	r, err := Resolve(HTMLSettings{RepoPath: repo})
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if r.Agent != AgentClaude {
+		t.Errorf("Agent = %q, want claude", r.Agent)
+	}
+	if r.OpencodeConfigPath != "" {
+		t.Errorf("OpencodeConfigPath = %q, want empty for claude", r.OpencodeConfigPath)
 	}
 }
 
