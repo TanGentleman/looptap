@@ -24,6 +24,10 @@ looptap html --repo /path/to/repo --branch current --output report.html --force
 
 Repo and branch also read from `LOOPTAP_REPO_PATH` and `LOOPTAP_BRANCH` (`current` | `default` | a branch name). Without `--force` you get a confirmation prompt showing the resolved repo and branch before anything runs.
 
+### Hosted on Modal
+
+Want `looptap html` reachable over HTTP? `cp example.env .env`, fill in the creds, then `./scripts/setup.sh` — it preflights Gemini, points the modal CLI at your tokens, and tells you whether the app is live yet (deploy script lands in PR 2).
+
 Browse the DB with datasette:
 
 ```bash

@@ -1,6 +1,9 @@
 # Binary output
 looptap
 
+# Local secrets — never commit
+.env
+
 # Test databases
 *.db
 *.db-journal
