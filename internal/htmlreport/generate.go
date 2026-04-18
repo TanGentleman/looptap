@@ -145,7 +145,14 @@ func runBin(ctx context.Context, bin, dir string, args, env []string) (string, e
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	// Always surface captured stderr + stdout size to our own stderr so CI
+	// logs aren't blind when the agent exits 0 with empty output.
+	if s := strings.TrimSpace(stderr.String()); s != "" {
+		fmt.Fprintf(os.Stderr, "%s stderr:\n%s\n", bin, s)
+	}
+	fmt.Fprintf(os.Stderr, "%s stdout: %d bytes\n", bin, stdout.Len())
+	if err != nil {
 		return "", fmt.Errorf("%s failed: %w\nstderr: %s", bin, err, strings.TrimSpace(stderr.String()))
 	}
 	return stdout.String(), nil
