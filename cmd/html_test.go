@@ -155,7 +155,7 @@ func TestHTMLCmd_OpencodeAgent(t *testing.T) {
 
 func TestHTMLCmd_OpencodeDefaultConfig(t *testing.T) {
 	// No --opencode-config → fall back to the embedded default. The cmd
-	// should still run; the Summary should advertise the built-in default.
+	// should still run; the Summary should advertise the safe default shape.
 	repo := initRepoForCmdTest(t)
 	fake := &fakeRunner{html: "<!doctype html><html></html>"}
 	cmd := newHTMLCmd(fake.runner())
@@ -166,11 +166,42 @@ func TestHTMLCmd_OpencodeDefaultConfig(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("Execute: %v", err)
 	}
-	if !strings.Contains(buf.String(), "built-in default") {
-		t.Errorf("stdout missing default-config marker: %s", buf.String())
+	out := buf.String()
+	if !strings.Contains(out, "narrow git allowlist") {
+		t.Errorf("stdout should advertise the safe default shape: %s", out)
+	}
+	if strings.Contains(out, "sandbox: yes") {
+		t.Errorf("stdout should NOT mention sandbox when --is-sandbox is off: %s", out)
 	}
 	if fake.calls != 1 {
 		t.Errorf("runner calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestHTMLCmd_OpencodeSandbox(t *testing.T) {
+	// --is-sandbox opts into the permissive default. Summary must say so,
+	// and (per TestGenerate_OpencodeSandboxArgs) the agent invocation gets
+	// --dangerously-skip-permissions.
+	repo := initRepoForCmdTest(t)
+	fake := &fakeRunner{html: "<!doctype html><html></html>"}
+	cmd := newHTMLCmd(fake.runner())
+	cmd.SetArgs([]string{"--repo", repo, "--agent", "opencode", "--is-sandbox", "--force"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "sandbox: yes") {
+		t.Errorf("stdout missing sandbox marker: %s", out)
+	}
+	if !strings.Contains(out, "sandbox default") {
+		t.Errorf("stdout should advertise the sandbox default shape: %s", out)
+	}
+	joined := strings.Join(fake.gotArgs, " ")
+	if !strings.Contains(joined, "--dangerously-skip-permissions") {
+		t.Errorf("sandbox invocation missing --dangerously-skip-permissions: %s", joined)
 	}
 }
 

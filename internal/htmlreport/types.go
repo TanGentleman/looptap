@@ -28,6 +28,7 @@ type HTMLSettings struct {
 	BranchName         string     // only read when BranchMode == BranchCustom
 	Agent              Agent      // claude | opencode; "" defaults to claude
 	OpencodeConfigPath string     // path to opencode JSON config; required when Agent == AgentOpencode
+	IsSandbox          bool       // opt into permissive defaults + --dangerously-skip-permissions (opencode only)
 }
 
 // Resolved is HTMLSettings after we've poked the filesystem and asked git
@@ -38,6 +39,7 @@ type Resolved struct {
 	Branch             string // concrete branch name
 	Agent              Agent  // concrete agent (claude or opencode)
 	OpencodeConfigPath string // absolute path to opencode config, or "" for claude
+	IsSandbox          bool   // see HTMLSettings.IsSandbox
 }
 
 // Summary is the short blurb we print for the confirmation prompt.
@@ -46,9 +48,16 @@ func (r *Resolved) Summary() string {
 	if r.Agent == AgentOpencode {
 		cfg := r.OpencodeConfigPath
 		if cfg == "" {
-			cfg = "(built-in default)"
+			if r.IsSandbox {
+				cfg = "(built-in sandbox default — bash: allow)"
+			} else {
+				cfg = "(built-in default — bash: narrow git allowlist)"
+			}
 		}
 		s += fmt.Sprintf("\nconfig: %s", cfg)
+		if r.IsSandbox {
+			s += "\nsandbox: yes (--dangerously-skip-permissions on)"
+		}
 	}
 	return s
 }

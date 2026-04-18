@@ -25,6 +25,7 @@ func newHTMLCmd(runner htmlreport.Runner) *cobra.Command {
 		outputPath         string
 		agentFlag          string
 		opencodeConfigPath string
+		isSandbox          bool
 		force              bool
 	)
 
@@ -38,18 +39,21 @@ Under the hood this runs a coding-agent CLI in headless mode inside the target
 repo, with read-only tools so it can poke at git. Two agents are supported:
 
   claude    ` + "`claude -p`" + ` with --permission-mode bypassPermissions (default)
-  opencode  ` + "`opencode run`" + ` with --dangerously-skip-permissions
-            (point --opencode-config at a JSON config to override; without one
-            we fall back to a built-in read-only default — read/glob/grep/list/
-            bash allow, edit/webfetch/websearch deny. Allowed tools, model, and
-            provider credentials all live in the config file; see
-            internal/htmlreport/opencode.default.json as a template.)
+  opencode  ` + "`opencode run`" + `. Without --opencode-config, ships an embedded
+            default that's safe to run against an untrusted repo on your
+            laptop: read/glob/grep/list + a narrow git-read-only bash
+            allowlist, edit/webfetch/websearch denied. --is-sandbox swaps
+            that for the permissive shape (bash: allow, --dangerously-skip-
+            permissions on) — use it in CI or disposable containers where
+            the blast radius is already contained. Template:
+            internal/htmlreport/opencode.default.json.
 
-Repo, branch, and agent may be set via flags or environment variables:
+Repo, branch, agent, and sandbox may be set via flags or environment variables:
   LOOPTAP_REPO_PATH         path to a git repo (default: cwd)
   LOOPTAP_BRANCH            current | default | <branch-name> (default: current)
   LOOPTAP_AGENT             claude | opencode (default: claude)
   LOOPTAP_OPENCODE_CONFIG   path to opencode JSON config (default: built-in)
+  LOOPTAP_SANDBOX           1/true to enable --is-sandbox (default: off)
   LOOPTAP_CLAUDE_BIN        override the claude binary (default: claude on PATH)
   LOOPTAP_OPENCODE_BIN      override the opencode binary (default: opencode on PATH)
 
@@ -68,6 +72,9 @@ Use --force to skip the confirmation prompt.`,
 			if opencodeConfigPath == "" {
 				opencodeConfigPath = os.Getenv("LOOPTAP_OPENCODE_CONFIG")
 			}
+			if !isSandbox {
+				isSandbox = parseBool(os.Getenv("LOOPTAP_SANDBOX"))
+			}
 
 			mode, name := htmlreport.ParseBranchFlag(branchFlag)
 			agent := htmlreport.ParseAgentFlag(agentFlag)
@@ -77,6 +84,7 @@ Use --force to skip the confirmation prompt.`,
 				BranchName:         name,
 				Agent:              agent,
 				OpencodeConfigPath: opencodeConfigPath,
+				IsSandbox:          isSandbox,
 			})
 			if err != nil {
 				return err
@@ -122,9 +130,19 @@ Use --force to skip the confirmation prompt.`,
 	cmd.Flags().StringVarP(&outputPath, "output", "o", "", "write HTML to file (default: stdout)")
 	cmd.Flags().StringVar(&agentFlag, "agent", "", "claude | opencode (default: claude, env LOOPTAP_AGENT)")
 	cmd.Flags().StringVar(&opencodeConfigPath, "opencode-config", "", "path to opencode JSON config (default: built-in read-only config, env LOOPTAP_OPENCODE_CONFIG)")
+	cmd.Flags().BoolVar(&isSandbox, "is-sandbox", false, "opencode only: opt into the permissive default (bash: allow) + --dangerously-skip-permissions (env LOOPTAP_SANDBOX)")
 	cmd.Flags().BoolVar(&force, "force", false, "skip confirmation prompt")
 
 	return cmd
+}
+
+// parseBool accepts the usual 1/true/yes/on (any case). Anything else is false.
+func parseBool(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // confirm reads a y/n answer from in and returns true only for an explicit yes.

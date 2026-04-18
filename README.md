@@ -22,17 +22,25 @@ looptap html       # hand a branch to a coding agent, get a shareable HTML repor
 # default: Claude Code
 looptap html --repo /path/to/repo --branch current --output report.html --force
 
-# opencode with the built-in read-only config (ANTHROPIC_API_KEY from env)
+# opencode on your laptop — locked-down default, safe against prompt injection
 looptap html --agent opencode --repo /path/to/repo --output report.html --force
+
+# opencode in CI / a disposable container — open the leash
+looptap html --agent opencode --is-sandbox --repo /path/to/repo --output report.html --force
 
 # opencode with your own config (model, provider creds, tool allowlist, etc.)
 looptap html --agent opencode --opencode-config ./opencode.json \
   --repo /path/to/repo --output report.html --force
 ```
 
-Without `--opencode-config`, looptap ships an embedded default that allows `read`/`glob`/`grep`/`list`/`bash` and denies `edit`/`webfetch`/`websearch` — enough for the agent to poke at git without wandering off. Copy [`internal/htmlreport/opencode.default.json`](internal/htmlreport/opencode.default.json) as a starting point for your own.
+Without `--opencode-config`, looptap ships two embedded defaults and picks between them based on `--is-sandbox`:
 
-Repo, branch, agent, and opencode config also read from `LOOPTAP_REPO_PATH`, `LOOPTAP_BRANCH` (`current` | `default` | a branch name), `LOOPTAP_AGENT` (`claude` | `opencode`), and `LOOPTAP_OPENCODE_CONFIG`. Without `--force` you get a confirmation prompt showing the resolved repo, branch, and agent before anything runs.
+- **default (laptop-safe)**: `read`/`glob`/`grep`/`list` allowed, `edit`/`webfetch`/`websearch` denied, and `bash` is a narrow allowlist of read-only git subcommands — a prompt-injected repo can't `rm -rf ~` through this one. Uses of `--dangerously-skip-permissions` are also off.
+- **`--is-sandbox`**: opens `bash` fully and turns on `--dangerously-skip-permissions`. Use in CI or a disposable container where the blast radius is already contained.
+
+Either way, copy [`internal/htmlreport/opencode.default.json`](internal/htmlreport/opencode.default.json) or [`opencode.sandbox.json`](internal/htmlreport/opencode.sandbox.json) as a starting point for your own config.
+
+Repo, branch, agent, opencode config, and sandbox also read from `LOOPTAP_REPO_PATH`, `LOOPTAP_BRANCH` (`current` | `default` | a branch name), `LOOPTAP_AGENT` (`claude` | `opencode`), `LOOPTAP_OPENCODE_CONFIG`, and `LOOPTAP_SANDBOX` (`1`/`true`). Without `--force` you get a confirmation prompt showing the resolved repo, branch, and agent before anything runs.
 
 Browse the DB with datasette:
 

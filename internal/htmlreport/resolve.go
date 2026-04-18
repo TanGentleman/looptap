@@ -43,6 +43,7 @@ func Resolve(s HTMLSettings) (*Resolved, error) {
 		Branch:             branch,
 		Agent:              agent,
 		OpencodeConfigPath: cfg,
+		IsSandbox:          s.IsSandbox,
 	}, nil
 }
 

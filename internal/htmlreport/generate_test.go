@@ -69,6 +69,8 @@ func TestGenerate_PassesArgsAndDir(t *testing.T) {
 }
 
 func TestGenerate_OpencodeArgs(t *testing.T) {
+	// Default (non-sandbox): NO --dangerously-skip-permissions. This is
+	// the security contract — the flag only ships when the caller opts in.
 	r := &Resolved{
 		RepoPath:           "/tmp/myrepo",
 		Branch:             "feature/x",
@@ -91,8 +93,8 @@ func TestGenerate_OpencodeArgs(t *testing.T) {
 	}
 
 	joined := strings.Join(rec.gotArgs, " ")
-	if !strings.Contains(joined, "--dangerously-skip-permissions") {
-		t.Errorf("opencode args missing --dangerously-skip-permissions: %s", joined)
+	if strings.Contains(joined, "--dangerously-skip-permissions") {
+		t.Errorf("non-sandbox opencode must NOT include --dangerously-skip-permissions: %s", joined)
 	}
 	// The strict HTML-only instruction must be folded into the user prompt,
 	// since opencode's --system overrides rather than appends.
@@ -107,6 +109,27 @@ func TestGenerate_OpencodeArgs(t *testing.T) {
 		if strings.Contains(joined, bad) {
 			t.Errorf("opencode args contain claude-only flag %q: %s", bad, joined)
 		}
+	}
+}
+
+func TestGenerate_OpencodeSandboxArgs(t *testing.T) {
+	// Sandbox mode: --dangerously-skip-permissions DOES ship. This is the
+	// explicit-opt-in knob for CI runners and disposable containers.
+	r := &Resolved{
+		RepoPath:           "/tmp/myrepo",
+		Branch:             "feature/x",
+		BranchMode:         BranchCustom,
+		Agent:              AgentOpencode,
+		OpencodeConfigPath: "/tmp/opencode.json",
+		IsSandbox:          true,
+	}
+	rec := &recordingRunner{out: "<!doctype html><html></html>"}
+	if _, err := Generate(context.Background(), r, rec.asRunner()); err != nil {
+		t.Fatalf("Generate: %v", err)
+	}
+	joined := strings.Join(rec.gotArgs, " ")
+	if !strings.Contains(joined, "--dangerously-skip-permissions") {
+		t.Errorf("sandbox opencode must include --dangerously-skip-permissions: %s", joined)
 	}
 }
 

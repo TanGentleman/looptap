@@ -138,6 +138,7 @@ jobs:
             --repo . \
             --branch "${{ inputs.branch || github.ref_name }}" \
             --output branch-report.html \
+            --is-sandbox \
             --force
 
       - name: Slugify branch for artifact name

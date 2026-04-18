@@ -68,12 +68,19 @@ func buildClaudeArgs(r *Resolved) []string {
 // in via OPENCODE_CONFIG in the runner). `--system` overrides rather than
 // appends on opencode, so we fold the strict HTML-only instruction into the
 // user prompt instead of clobbering the config's system prompt.
+//
+// `--dangerously-skip-permissions` is gated on IsSandbox. Without it, an
+// unenumerated tool would prompt interactively and hang — but our default
+// config enumerates every tool opencode knows about, so headless still
+// works. The trade-off: fail-closed if opencode ships a new tool, instead
+// of auto-allowing it on a user's laptop.
 func buildOpencodeArgs(r *Resolved) []string {
 	prompt := systemAppend + "\n\n" + buildPrompt(r)
-	return []string{
-		"run", prompt,
-		"--dangerously-skip-permissions",
+	args := []string{"run", prompt}
+	if r.IsSandbox {
+		args = append(args, "--dangerously-skip-permissions")
 	}
+	return args
 }
 
 // defaultRunnerFor returns the real-binary runner appropriate for the agent.
@@ -81,8 +88,9 @@ func buildOpencodeArgs(r *Resolved) []string {
 func defaultRunnerFor(r *Resolved) Runner {
 	if r.Agent == AgentOpencode {
 		cfgPath := r.OpencodeConfigPath
+		isSandbox := r.IsSandbox
 		return func(ctx context.Context, dir string, args []string) (string, error) {
-			return runOpencode(ctx, dir, args, cfgPath)
+			return runOpencode(ctx, dir, args, cfgPath, isSandbox)
 		}
 	}
 	return runClaude
@@ -103,25 +111,30 @@ func runClaude(ctx context.Context, dir string, args []string) (string, error) {
 
 // runOpencode invokes the real `opencode` binary with OPENCODE_CONFIG set
 // to the user-supplied JSON config. An empty cfgPath means "use the embedded
-// DefaultOpencodeConfig" — we materialize it to a tempfile for the duration
-// of this call.
+// default" — safe by default (narrow git allowlist), or SandboxOpencodeConfig
+// when isSandbox is set. Either way we materialize to a tempfile for the
+// duration of this call.
 //
 // Honored env vars:
 //
 //	LOOPTAP_OPENCODE_BIN — override the binary name/path
-func runOpencode(ctx context.Context, dir string, args []string, cfgPath string) (string, error) {
+func runOpencode(ctx context.Context, dir string, args []string, cfgPath string, isSandbox bool) (string, error) {
 	bin := "opencode"
 	if b := os.Getenv("LOOPTAP_OPENCODE_BIN"); b != "" {
 		bin = b
 	}
 
 	if cfgPath == "" {
+		cfg := DefaultOpencodeConfig
+		if isSandbox {
+			cfg = SandboxOpencodeConfig
+		}
 		f, err := os.CreateTemp("", "looptap-opencode-*.json")
 		if err != nil {
 			return "", fmt.Errorf("tempfile for default opencode config: %w", err)
 		}
 		defer os.Remove(f.Name())
-		if _, err := f.Write(DefaultOpencodeConfig); err != nil {
+		if _, err := f.Write(cfg); err != nil {
 			f.Close()
 			return "", fmt.Errorf("writing default opencode config: %w", err)
 		}
