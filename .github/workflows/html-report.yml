@@ -45,6 +45,16 @@ jobs:
           # Don't leave a usable token on disk — the agent has a shell tool.
           persist-credentials: false
 
+      - name: Make main resolvable for agent diffs
+        # actions/checkout sets up the target branch locally but leaves
+        # refs/remotes/origin/HEAD unset and doesn't create other local
+        # branches. The agent needs `main` to describe the branch; wire
+        # it up locally (no network, no creds).
+        run: |
+          git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+          git rev-parse --verify --quiet main >/dev/null || \
+            git branch main refs/remotes/origin/main
+
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -130,9 +140,16 @@ jobs:
             --output branch-report.html \
             --force
 
+      - name: Slugify branch for artifact name
+        id: slug
+        # Artifact names reject "/", so branches like claude/foo need a slug.
+        env:
+          BRANCH: ${{ inputs.branch || github.ref_name }}
+        run: printf 'slug=%s\n' "${BRANCH//\//-}" >> "$GITHUB_OUTPUT"
+
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
-          name: branch-report-${{ inputs.branch || github.ref_name }}
+          name: branch-report-${{ steps.slug.outputs.slug }}
           path: branch-report.html
           retention-days: 30
