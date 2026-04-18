@@ -26,7 +26,14 @@ Repo and branch also read from `LOOPTAP_REPO_PATH` and `LOOPTAP_BRANCH` (`curren
 
 ### Hosted on Modal
 
-Want `looptap html` reachable over HTTP? `cp example.env .env`, fill in the creds, then `./scripts/setup.sh` — it preflights Gemini, points the modal CLI at your tokens, and tells you whether the app is live yet (deploy script lands in PR 2).
+Want `looptap analyze` reachable over HTTP? `cp example.env .env`, fill in the creds, then:
+
+```bash
+./scripts/setup.sh   # preflights Gemini, upserts the looptap-secrets Modal secret
+./scripts/deploy.sh  # builds a linux binary, deploys deploy/app.py, smokes /healthz
+```
+
+Then `curl "$URL/analyze"` runs `looptap analyze` against a sample CLAUDE.md baked into the image. `GOOGLE_API_KEY` rides along via `Secret.from_name("looptap-secrets")` — the function forwards it into the subprocess env explicitly.
 
 Browse the DB with datasette:
 
