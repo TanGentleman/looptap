@@ -1,9 +1,9 @@
 # Manual workflow: build looptap from source, install opencode, and have the
 # agent write a shareable HTML report on whatever branch you dispatch.
 #
-# Requires a `GEMINI_API_KEY` repository secret (Settings → Secrets and
+# Requires a `GOOGLE_GENERATIVE_AI_API_KEY` repository secret (Settings → Secrets and
 # variables → Actions → New repository secret). Opencode's google
-# provider reads GEMINI_API_KEY (Google AI Studio), not GOOGLE_API_KEY.
+# provider reads GOOGLE_GENERATIVE_AI_API_KEY (Google AI Studio), not GOOGLE_API_KEY.
 #
 # Security posture: the agent config is written inline from this workflow
 # (pinned to the trusted default branch), never sourced from the branch
@@ -116,12 +116,12 @@ jobs:
 
       - name: Generate branch report
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
           LOOPTAP_AGENT: opencode
           LOOPTAP_OPENCODE_CONFIG: ${{ runner.temp }}/looptap/opencode.json
         run: |
-          if [ -z "${GEMINI_API_KEY}" ]; then
-            echo "::error::GEMINI_API_KEY secret is not set. Add it under Settings → Secrets and variables → Actions." >&2
+          if [ -z "${GOOGLE_GENERATIVE_AI_API_KEY}" ]; then
+            echo "::error::GOOGLE_GENERATIVE_AI_API_KEY secret is not set. Add it under Settings → Secrets and variables → Actions." >&2
             exit 1
           fi
           ./looptap html \
