@@ -137,11 +137,23 @@ if [[ "$DRY_RUN" == true || "$NO_SMOKE" == true ]]; then
 fi
 
 echo "Smoke: GET $URL/healthz"
-if ! curl -fsS --max-time 30 "$URL/healthz"; then
-	echo
-	echo "Smoke test failed — the app is deployed but /healthz didn't come back 2xx." >&2
+smoke_args=(-sS --max-time 30 -o /dev/null -w '%{http_code}')
+if [[ -n "${MODAL_PROXY_TOKEN_ID:-}" && -n "${MODAL_PROXY_TOKEN_SECRET:-}" ]]; then
+	smoke_args+=(-H "Modal-Key: $MODAL_PROXY_TOKEN_ID" -H "Modal-Secret: $MODAL_PROXY_TOKEN_SECRET")
+fi
+code="$(curl "${smoke_args[@]}" "$URL/healthz" || echo 000)"
+case "$code" in
+200) echo "  ok (200) — auth accepted" ;;
+401)
+	echo "  reachable but 401 — proxy auth is on. Create tokens at"
+	echo "    https://modal.com/settings/proxy-auth-tokens"
+	echo "  and call with:  -H 'Modal-Key: <id>' -H 'Modal-Secret: <secret>'"
+	;;
+*)
+	echo "Smoke test: unexpected status $code from /healthz." >&2
 	echo "Check 'modal app logs $LOOPTAP_MODAL_APP'." >&2
 	exit 1
-fi
+	;;
+esac
 echo
-echo "Try it: curl \"$URL/analyze\""
+echo "Try it: curl -H 'Modal-Key: \$KEY' -H 'Modal-Secret: \$SECRET' \"$URL/analyze\""

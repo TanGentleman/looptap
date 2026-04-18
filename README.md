@@ -33,7 +33,15 @@ Want `looptap analyze` reachable over HTTP? `cp example.env .env`, fill in the c
 ./scripts/deploy.sh  # builds a linux binary, deploys deploy/app.py, smokes /healthz
 ```
 
-Then `curl "$URL/analyze"` runs `looptap analyze` against a sample CLAUDE.md baked into the image. `GOOGLE_API_KEY` rides along via `Secret.from_name("looptap-secrets")` — the function forwards it into the subprocess env explicitly.
+The endpoint is gated by [Modal proxy auth tokens](https://modal.com/docs/guide/webhook-proxy-auth) — a raw `curl` gets a 401. Create a pair at <https://modal.com/settings/proxy-auth-tokens> and send them on **every** request:
+
+```bash
+curl -H "Modal-Key: $MODAL_PROXY_TOKEN_ID" \
+     -H "Modal-Secret: $MODAL_PROXY_TOKEN_SECRET" \
+     "$URL/analyze"
+```
+
+Any client code that calls this server — scripts, CI jobs, another service — needs the same two headers. `GOOGLE_API_KEY` rides along via `Secret.from_name("looptap-secrets")` and the function forwards it into the subprocess env explicitly.
 
 Browse the DB with datasette:
 

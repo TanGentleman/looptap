@@ -67,7 +67,7 @@ def _run_analyze(file_path: str, as_json: bool) -> tuple[int, str, str]:
     secrets=[modal.Secret.from_name(SECRET_NAME)],
     timeout=180,
 )
-@modal.asgi_app()
+@modal.asgi_app(requires_proxy_auth=True)
 def web():
     from fastapi import FastAPI, HTTPException, Query
     from fastapi.responses import JSONResponse, PlainTextResponse
