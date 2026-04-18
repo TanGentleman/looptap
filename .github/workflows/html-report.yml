@@ -83,7 +83,7 @@ jobs:
           cat > "${RUNNER_TEMP}/looptap/opencode.json" <<'EOF'
           {
             "$schema": "https://opencode.ai/config.json",
-            "model": "google/gemini-3.1-flash-lite-preview",
+            "model": "google/gemini-3.1-flash-lite",
             "permission": {
               "read": "allow",
               "glob": "allow",
