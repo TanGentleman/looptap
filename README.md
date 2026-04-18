@@ -42,9 +42,9 @@ uvx datasette ~/.looptap/looptap.db --metadata metadata.json
 
 ## Branch reports from CI
 
-[`.github/workflows/html-report.yml`](.github/workflows/html-report.yml) drives `looptap html` via opencode on a Gemini model ([`.github/opencode.ci.json`](.github/opencode.ci.json) — `gemini-3.1-flash-lite-preview`, read-only tools). Dispatch it from the Actions tab with a branch name; the rendered HTML falls out as a workflow artifact.
+[`.github/workflows/html-report.yml`](.github/workflows/html-report.yml) drives `looptap html` via opencode on `google/gemini-3.1-flash-lite-preview`. Dispatch it from the Actions tab with a branch name; the rendered HTML falls out as a workflow artifact. The agent config is inlined in the workflow (written from the trusted default branch, not from the branch under inspection) — read/glob/grep/list plus a narrow git-read-only bash allowlist, with edit/webfetch/websearch denied.
 
-**Setup**: add a `GOOGLE_API_KEY` repository secret before the first run — **Settings → Secrets and variables → Actions → New repository secret**, name `GOOGLE_API_KEY`, value your key. Opencode picks it up from the environment; the workflow refuses to run without it. Swap the provider/model in `.github/opencode.ci.json` if you'd rather use a different key (remember to rename the secret too).
+**Setup**: add a `GOOGLE_API_KEY` repository secret before the first run — **Settings → Secrets and variables → Actions → New repository secret**, name `GOOGLE_API_KEY`, value your key. Opencode picks it up from the environment; the workflow refuses to run without it. Swap the provider/model in the workflow's inline config if you'd rather use a different key (remember to rename the secret too).
 
 ---
 

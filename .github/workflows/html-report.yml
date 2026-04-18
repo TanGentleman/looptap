@@ -3,7 +3,11 @@
 #
 # Requires a `GOOGLE_API_KEY` repository secret (Settings → Secrets and
 # variables → Actions → New repository secret). Opencode picks it up from
-# the environment — see .github/opencode.ci.json for the agent's leash.
+# the environment.
+#
+# Security posture: the agent config is written inline from this workflow
+# (pinned to the trusted default branch), never sourced from the branch
+# under inspection — a malicious branch can't widen the agent's leash.
 name: html-report
 
 on:
@@ -13,6 +17,10 @@ on:
         description: Branch to report on
         default: main
         required: true
+
+# Minimum perms: the report is an artifact, not a push.
+permissions:
+  contents: read
 
 env:
   GO_VERSION: "1.24.x"
@@ -31,6 +39,8 @@ jobs:
           ref: ${{ inputs.branch }}
           # Full history so the agent can diff against the default branch.
           fetch-depth: 0
+          # Don't leave a usable token on disk — the agent has a shell tool.
+          persist-credentials: false
 
       - uses: actions/setup-go@v5
         with:
@@ -53,11 +63,59 @@ jobs:
           ./looptap version
           opencode --version
 
+      - name: Write trusted opencode config
+        # Written from the workflow (which is pinned to the default branch
+        # at dispatch time), not from the branch under inspection. A
+        # malicious branch therefore cannot expand the agent's tool leash.
+        #
+        # Permission model:
+        #   - read/glob/grep/list: allow (file inspection)
+        #   - bash: pattern allowlist — specific git read subcommands only.
+        #     Everything else denied, including `git -c` (blocks alias/
+        #     core.sshCommand/textconv escapes), `git config`, `git submodule`,
+        #     `git fetch`, `git push`, `git clone` (network + config mutation).
+        #   - edit/webfetch/websearch: deny (no mutation, no egress).
+        run: |
+          mkdir -p "${RUNNER_TEMP}/looptap"
+          cat > "${RUNNER_TEMP}/looptap/opencode.json" <<'EOF'
+          {
+            "$schema": "https://opencode.ai/config.json",
+            "model": "google/gemini-3.1-flash-lite-preview",
+            "permission": {
+              "read": "allow",
+              "glob": "allow",
+              "grep": "allow",
+              "list": "allow",
+              "bash": {
+                "*": "deny",
+                "git symbolic-ref *": "allow",
+                "git rev-parse *": "allow",
+                "git log *": "allow",
+                "git diff *": "allow",
+                "git show *": "allow",
+                "git status *": "allow",
+                "git ls-files *": "allow",
+                "git branch *": "allow",
+                "git remote *": "allow",
+                "git -c *": "deny",
+                "git config *": "deny",
+                "git submodule *": "deny",
+                "git fetch *": "deny",
+                "git push *": "deny",
+                "git clone *": "deny"
+              },
+              "edit": "deny",
+              "webfetch": "deny",
+              "websearch": "deny"
+            }
+          }
+          EOF
+
       - name: Generate branch report
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           LOOPTAP_AGENT: opencode
-          LOOPTAP_OPENCODE_CONFIG: ${{ github.workspace }}/.github/opencode.ci.json
+          LOOPTAP_OPENCODE_CONFIG: ${{ runner.temp }}/looptap/opencode.json
         run: |
           if [ -z "${GOOGLE_API_KEY}" ]; then
             echo "::error::GOOGLE_API_KEY secret is not set. Add it under Settings → Secrets and variables → Actions." >&2
