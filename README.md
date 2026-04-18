@@ -26,7 +26,22 @@ Repo and branch also read from `LOOPTAP_REPO_PATH` and `LOOPTAP_BRANCH` (`curren
 
 ### Hosted on Modal
 
-Want `looptap html` reachable over HTTP? `cp example.env .env`, fill in the creds, then `./scripts/setup.sh` — it preflights Gemini, points the modal CLI at your tokens, and tells you whether the app is live yet (deploy script lands in PR 2).
+Want `looptap analyze` reachable over HTTP? `cp example.env .env`, fill in the creds, then:
+
+```bash
+./scripts/setup.sh   # preflights Gemini, upserts the looptap-secrets Modal secret
+./scripts/deploy.sh  # builds a linux binary, deploys deploy/app.py, smokes /healthz
+```
+
+The endpoint is gated by [Modal proxy auth tokens](https://modal.com/docs/guide/webhook-proxy-auth) — a raw `curl` gets a 401. Create a pair at <https://modal.com/settings/proxy-auth-tokens> and send them on **every** request:
+
+```bash
+curl -H "Modal-Key: $MODAL_PROXY_TOKEN_ID" \
+     -H "Modal-Secret: $MODAL_PROXY_TOKEN_SECRET" \
+     "$URL/analyze"
+```
+
+Any client code that calls this server — scripts, CI jobs, another service — needs the same two headers. `GOOGLE_API_KEY` rides along via `Secret.from_name("looptap-secrets")` and the function forwards it into the subprocess env explicitly.
 
 Browse the DB with datasette:
 
