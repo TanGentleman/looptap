@@ -16,6 +16,9 @@ on:
 
 env:
   GO_VERSION: "1.24.x"
+  # Version-pinned opencode. Bump intentionally; npm verifies package
+  # integrity (SHA-512) against the registry on install.
+  OPENCODE_VERSION: "1.4.11"
 
 jobs:
   report:
@@ -39,13 +42,11 @@ jobs:
       - name: Build looptap
         run: go build -o looptap .
 
-      - name: Install opencode
-        run: |
-          curl -fsSL https://opencode.ai/install | bash
-          # The installer drops the binary in ~/.opencode/bin by default.
-          # Add common candidates to PATH so the next step finds it.
-          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Install opencode (version-pinned, npm-verified)
+        # Avoids `curl | bash` on purpose: npm verifies the package's
+        # SHA-512 against the registry, so a pinned version gets us
+        # deterministic, tamper-evident installs in CI.
+        run: npm install -g "opencode-ai@${OPENCODE_VERSION}"
 
       - name: Sanity check
         run: |

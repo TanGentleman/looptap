@@ -6,7 +6,11 @@
     "glob": "allow",
     "grep": "allow",
     "list": "allow",
-    "bash": "allow",
+    "bash": {
+      "*": "deny",
+      "git": "allow",
+      "git *": "allow"
+    },
     "edit": "deny",
     "webfetch": "deny",
     "websearch": "deny"
