@@ -1,5 +1,9 @@
 # Binary output
 looptap
+deploy/bin/
+
+# Local secrets — never commit
+.env
 
 # Test databases
 *.db
