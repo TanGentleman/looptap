@@ -1,0 +1,76 @@
+# Manual workflow: build looptap from source, install opencode, and have the
+# agent write a shareable HTML report on whatever branch you dispatch.
+#
+# Requires a `GOOGLE_API_KEY` repository secret (Settings → Secrets and
+# variables → Actions → New repository secret). Opencode picks it up from
+# the environment — see .github/opencode.ci.json for the agent's leash.
+name: html-report
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to report on
+        default: main
+        required: true
+
+env:
+  GO_VERSION: "1.24.x"
+
+jobs:
+  report:
+    name: Generate branch report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out target branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+          # Full history so the agent can diff against the default branch.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install SQLite dev headers
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Build looptap
+        run: go build -o looptap .
+
+      - name: Install opencode
+        run: |
+          curl -fsSL https://opencode.ai/install | bash
+          # The installer drops the binary in ~/.opencode/bin by default.
+          # Add common candidates to PATH so the next step finds it.
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Sanity check
+        run: |
+          ./looptap version
+          opencode --version
+
+      - name: Generate branch report
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          LOOPTAP_AGENT: opencode
+          LOOPTAP_OPENCODE_CONFIG: ${{ github.workspace }}/.github/opencode.ci.json
+        run: |
+          if [ -z "${GOOGLE_API_KEY}" ]; then
+            echo "::error::GOOGLE_API_KEY secret is not set. Add it under Settings → Secrets and variables → Actions." >&2
+            exit 1
+          fi
+          ./looptap html \
+            --repo . \
+            --branch "${{ inputs.branch }}" \
+            --output branch-report.html \
+            --force
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-report-${{ inputs.branch }}
+          path: branch-report.html
+          retention-days: 30
