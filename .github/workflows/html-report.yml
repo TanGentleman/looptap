@@ -17,6 +17,9 @@ on:
         description: Branch to report on
         default: main
         required: true
+  # TEMPORARY: smoke-test from branch before merging to main. Revert this block.
+  push:
+    branches: [claude/looptap-html-opencode-UzCBi]
 
 # Minimum perms: the report is an artifact, not a push.
 permissions:
@@ -36,7 +39,7 @@ jobs:
       - name: Check out target branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.branch }}
+          ref: ${{ inputs.branch || github.ref_name }}
           # Full history so the agent can diff against the default branch.
           fetch-depth: 0
           # Don't leave a usable token on disk — the agent has a shell tool.
@@ -123,13 +126,13 @@ jobs:
           fi
           ./looptap html \
             --repo . \
-            --branch "${{ inputs.branch }}" \
+            --branch "${{ inputs.branch || github.ref_name }}" \
             --output branch-report.html \
             --force
 
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
-          name: branch-report-${{ inputs.branch }}
+          name: branch-report-${{ inputs.branch || github.ref_name }}
           path: branch-report.html
           retention-days: 30
