@@ -13,16 +13,34 @@ looptap run        # parse transcripts + detect signals
 looptap info       # what'd we find?
 looptap advise     # ask Gemini for CLAUDE.md fixes based on your signals
 looptap analyze    # quality-review your ~/.claude/CLAUDE.md
-looptap html       # hand a branch to claude, get a shareable HTML report back
+looptap html       # hand a branch to a coding agent, get a shareable HTML report back
 ```
 
-`advise` and `analyze` need a Gemini API key — set `GOOGLE_API_KEY`. `html` shells out to the `claude` CLI in headless mode, so you'll need that on your PATH (override with `LOOPTAP_CLAUDE_BIN`).
+`advise` and `analyze` need a Gemini API key — set `GOOGLE_API_KEY`. `html` shells out to a coding-agent CLI in headless mode: either `claude` (the default, override with `LOOPTAP_CLAUDE_BIN`) or `opencode` (override with `LOOPTAP_OPENCODE_BIN`). Pick with `--agent`.
 
 ```bash
+# default: Claude Code
 looptap html --repo /path/to/repo --branch current --output report.html --force
+
+# opencode on your laptop — locked-down default, safe against prompt injection
+looptap html --agent opencode --repo /path/to/repo --output report.html --force
+
+# opencode in CI / a disposable container — open the leash
+looptap html --agent opencode --is-sandbox --repo /path/to/repo --output report.html --force
+
+# opencode with your own config (model, provider creds, tool allowlist, etc.)
+looptap html --agent opencode --opencode-config ./opencode.json \
+  --repo /path/to/repo --output report.html --force
 ```
 
-Repo and branch also read from `LOOPTAP_REPO_PATH` and `LOOPTAP_BRANCH` (`current` | `default` | a branch name). Without `--force` you get a confirmation prompt showing the resolved repo and branch before anything runs.
+Without `--opencode-config`, looptap ships two embedded defaults and picks between them based on `--is-sandbox`:
+
+- **default (laptop-safe)**: `read`/`glob`/`grep`/`list` allowed, `edit`/`webfetch`/`websearch` denied, and `bash` is a narrow allowlist of read-only git subcommands — a prompt-injected repo can't `rm -rf ~` through this one. Uses of `--dangerously-skip-permissions` are also off.
+- **`--is-sandbox`**: opens `bash` fully and turns on `--dangerously-skip-permissions`. Use in CI or a disposable container where the blast radius is already contained.
+
+Either way, copy [`internal/htmlreport/opencode.default.json`](internal/htmlreport/opencode.default.json) or [`opencode.sandbox.json`](internal/htmlreport/opencode.sandbox.json) as a starting point for your own config.
+
+Repo, branch, agent, opencode config, and sandbox also read from `LOOPTAP_REPO_PATH`, `LOOPTAP_BRANCH` (`current` | `default` | a branch name), `LOOPTAP_AGENT` (`claude` | `opencode`), `LOOPTAP_OPENCODE_CONFIG`, and `LOOPTAP_SANDBOX` (`1`/`true`). Without `--force` you get a confirmation prompt showing the resolved repo, branch, and agent before anything runs.
 
 ### Hosted on Modal
 
@@ -48,6 +66,12 @@ Browse the DB with datasette:
 ```bash
 uvx datasette ~/.looptap/looptap.db --metadata metadata.json
 ```
+
+## Branch reports from CI
+
+[`.github/workflows/html-report.yml`](.github/workflows/html-report.yml) drives `looptap html` via opencode on `google/gemini-3.1-flash-lite-preview`. Dispatch it from the Actions tab with a branch name; the rendered HTML falls out as a workflow artifact. The agent config is inlined in the workflow (written from the trusted default branch, not from the branch under inspection) — read/glob/grep/list plus a narrow git-read-only bash allowlist, with edit/webfetch/websearch denied.
+
+**Setup**: add a `GOOGLE_GENERATIVE_AI_API_KEY` repository secret before the first run — **Settings → Secrets and variables → Actions → New repository secret**, name `GOOGLE_GENERATIVE_AI_API_KEY`, value your Google AI Studio key. That's the variable opencode's google provider reads; the workflow refuses to run without it. Swap the provider/model in the workflow's inline config if you'd rather use a different key (remember to rename the secret too).
 
 ---
 

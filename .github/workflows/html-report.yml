@@ -1,0 +1,156 @@
+# Manual workflow: build looptap from source, install opencode, and have the
+# agent write a shareable HTML report on whatever branch you dispatch.
+#
+# Requires a `GOOGLE_GENERATIVE_AI_API_KEY` repository secret (Settings → Secrets and
+# variables → Actions → New repository secret). Opencode's google
+# provider reads GOOGLE_GENERATIVE_AI_API_KEY (Google AI Studio), not GOOGLE_API_KEY.
+#
+# Security posture: the agent config is written inline from this workflow
+# (pinned to the trusted default branch), never sourced from the branch
+# under inspection — a malicious branch can't widen the agent's leash.
+name: html-report
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Branch to report on
+        default: main
+        required: true
+  # TEMPORARY: smoke-test from branch before merging to main. Revert this block.
+  push:
+    branches: [claude/looptap-html-opencode-UzCBi]
+
+# Minimum perms: the report is an artifact, not a push.
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.24.x"
+  # Version-pinned opencode. Bump intentionally; npm verifies package
+  # integrity (SHA-512) against the registry on install.
+  OPENCODE_VERSION: "1.4.11"
+
+jobs:
+  report:
+    name: Generate branch report
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out target branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref_name }}
+          # Full history so the agent can diff against the default branch.
+          fetch-depth: 0
+          # Don't leave a usable token on disk — the agent has a shell tool.
+          persist-credentials: false
+
+      - name: Make main resolvable for agent diffs
+        # actions/checkout sets up the target branch locally but leaves
+        # refs/remotes/origin/HEAD unset and doesn't create other local
+        # branches. The agent needs `main` to describe the branch; wire
+        # it up locally (no network, no creds).
+        run: |
+          git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+          git rev-parse --verify --quiet main >/dev/null || \
+            git branch main refs/remotes/origin/main
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install SQLite dev headers
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Build looptap
+        run: go build -o looptap .
+
+      - name: Install opencode (version-pinned, npm-verified)
+        # Avoids `curl | bash` on purpose: npm verifies the package's
+        # SHA-512 against the registry, so a pinned version gets us
+        # deterministic, tamper-evident installs in CI.
+        run: npm install -g "opencode-ai@${OPENCODE_VERSION}"
+
+      - name: Sanity check
+        run: |
+          ./looptap version
+          opencode --version
+
+      - name: Write trusted opencode config
+        # Written from the workflow (which is pinned to the default branch
+        # at dispatch time), not from the branch under inspection. A
+        # malicious branch therefore cannot expand the agent's tool leash.
+        #
+        # Permission model:
+        #   - read/glob/grep/list: allow (file inspection)
+        #   - bash: pattern allowlist — specific git read subcommands only.
+        #     Everything else denied, including `git -c` (blocks alias/
+        #     core.sshCommand/textconv escapes), `git config`, `git submodule`,
+        #     `git fetch`, `git push`, `git clone` (network + config mutation).
+        #   - edit/webfetch/websearch: deny (no mutation, no egress).
+        run: |
+          mkdir -p "${RUNNER_TEMP}/looptap"
+          cat > "${RUNNER_TEMP}/looptap/opencode.json" <<'EOF'
+          {
+            "$schema": "https://opencode.ai/config.json",
+            "model": "google/gemini-3.1-flash-lite-preview",
+            "permission": {
+              "read": "allow",
+              "glob": "allow",
+              "grep": "allow",
+              "list": "allow",
+              "bash": {
+                "*": "deny",
+                "git symbolic-ref *": "allow",
+                "git rev-parse *": "allow",
+                "git log *": "allow",
+                "git diff *": "allow",
+                "git show *": "allow",
+                "git status *": "allow",
+                "git ls-files *": "allow",
+                "git branch *": "allow",
+                "git remote *": "allow",
+                "git -c *": "deny",
+                "git config *": "deny",
+                "git submodule *": "deny",
+                "git fetch *": "deny",
+                "git push *": "deny",
+                "git clone *": "deny"
+              },
+              "edit": "deny",
+              "webfetch": "deny",
+              "websearch": "deny"
+            }
+          }
+          EOF
+
+      - name: Generate branch report
+        env:
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          LOOPTAP_AGENT: opencode
+          LOOPTAP_OPENCODE_CONFIG: ${{ runner.temp }}/looptap/opencode.json
+        run: |
+          if [ -z "${GOOGLE_GENERATIVE_AI_API_KEY}" ]; then
+            echo "::error::GOOGLE_GENERATIVE_AI_API_KEY secret is not set. Add it under Settings → Secrets and variables → Actions." >&2
+            exit 1
+          fi
+          ./looptap html \
+            --repo . \
+            --branch "${{ inputs.branch || github.ref_name }}" \
+            --output branch-report.html \
+            --is-sandbox \
+            --force
+
+      - name: Slugify branch for artifact name
+        id: slug
+        # Artifact names reject "/", so branches like claude/foo need a slug.
+        env:
+          BRANCH: ${{ inputs.branch || github.ref_name }}
+        run: printf 'slug=%s\n' "${BRANCH//\//-}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload report
+        uses: actions/upload-artifact@v4
+        with:
+          name: branch-report-${{ steps.slug.outputs.slug }}
+          path: branch-report.html
+          retention-days: 30

@@ -27,11 +27,73 @@ func Resolve(s HTMLSettings) (*Resolved, error) {
 		return nil, err
 	}
 
+	agent := s.Agent
+	if agent == "" {
+		agent = AgentClaude
+	}
+
+	cfg, err := resolveAgentConfig(agent, s.OpencodeConfigPath)
+	if err != nil {
+		return nil, err
+	}
+
 	return &Resolved{
-		RepoPath:   repo,
-		BranchMode: mode,
-		Branch:     branch,
+		RepoPath:           repo,
+		BranchMode:         mode,
+		Branch:             branch,
+		Agent:              agent,
+		OpencodeConfigPath: cfg,
+		IsSandbox:          s.IsSandbox,
 	}, nil
+}
+
+// ParseAgentFlag maps --agent / LOOPTAP_AGENT into a concrete Agent.
+// Unknown values flow through so Resolve can complain with a proper error.
+func ParseAgentFlag(raw string) Agent {
+	trimmed := strings.ToLower(strings.TrimSpace(raw))
+	switch trimmed {
+	case "", "claude", "claude-code":
+		return AgentClaude
+	case "opencode":
+		return AgentOpencode
+	default:
+		return Agent(trimmed)
+	}
+}
+
+// resolveAgentConfig validates per-agent prerequisites. Claude needs nothing
+// beyond a binary on PATH; opencode needs a JSON config file — either an
+// explicit --opencode-config path, or nothing (in which case we fall back to
+// the embedded DefaultOpencodeConfig, materialized to a tempfile at run time).
+func resolveAgentConfig(agent Agent, path string) (string, error) {
+	switch agent {
+	case AgentClaude:
+		return "", nil
+	case AgentOpencode:
+		trimmed := strings.TrimSpace(path)
+		if trimmed == "" {
+			// Empty means "use the built-in default config". The runner
+			// materializes DefaultOpencodeConfig to a tempfile at exec time.
+			return "", nil
+		}
+		abs, err := filepath.Abs(trimmed)
+		if err != nil {
+			return "", fmt.Errorf("resolving opencode config %q: %w", trimmed, err)
+		}
+		fi, err := os.Stat(abs)
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("opencode config %q does not exist", abs)
+		}
+		if err != nil {
+			return "", fmt.Errorf("stat opencode config %q: %w", abs, err)
+		}
+		if fi.IsDir() {
+			return "", fmt.Errorf("opencode config %q is a directory, want a JSON file", abs)
+		}
+		return abs, nil
+	default:
+		return "", fmt.Errorf("unknown agent %q (want claude or opencode)", agent)
+	}
 }
 
 // ParseBranchFlag maps the --branch flag (or LOOPTAP_BRANCH env) into a

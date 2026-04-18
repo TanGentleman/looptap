@@ -11,17 +11,19 @@ import (
 	"testing"
 )
 
-// fakeRunner stands in for the real claude subprocess in cmd tests. It lets
+// fakeRunner stands in for the real agent subprocess in cmd tests. It lets
 // us verify the command path end-to-end without touching a real binary.
 type fakeRunner struct {
-	html  string
-	err   error
-	calls int
+	html    string
+	err     error
+	calls   int
+	gotArgs []string
 }
 
 func (f *fakeRunner) runner() htmlreport.Runner {
 	return func(ctx context.Context, dir string, args []string) (string, error) {
 		f.calls++
+		f.gotArgs = args
 		if f.err != nil {
 			return "", f.err
 		}
@@ -109,6 +111,97 @@ func TestHTMLCmd_ConfirmYesProceeds(t *testing.T) {
 	}
 	if fake.calls != 1 {
 		t.Errorf("runner calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestHTMLCmd_OpencodeAgent(t *testing.T) {
+	repo := initRepoForCmdTest(t)
+	cfg := filepath.Join(t.TempDir(), "opencode.json")
+	if err := os.WriteFile(cfg, []byte(`{"model":"anthropic/claude-sonnet-4-20250514"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	fake := &fakeRunner{html: "<!doctype html><html><body>oc</body></html>"}
+	cmd := newHTMLCmd(fake.runner())
+	cmd.SetArgs([]string{
+		"--repo", repo,
+		"--agent", "opencode",
+		"--opencode-config", cfg,
+		"--force",
+	})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	stdout := buf.String()
+	if !strings.Contains(stdout, "agent:  opencode") {
+		t.Errorf("stdout missing opencode agent summary: %s", stdout)
+	}
+	if !strings.Contains(stdout, cfg) {
+		t.Errorf("stdout missing config path: %s", stdout)
+	}
+	if !strings.Contains(stdout, "Asking opencode") {
+		t.Errorf("stdout missing 'Asking opencode' line: %s", stdout)
+	}
+	if fake.calls != 1 {
+		t.Errorf("runner calls = %d, want 1", fake.calls)
+	}
+	if len(fake.gotArgs) == 0 || fake.gotArgs[0] != "run" {
+		t.Errorf("expected first arg to be 'run', got %v", fake.gotArgs)
+	}
+}
+
+func TestHTMLCmd_OpencodeDefaultConfig(t *testing.T) {
+	// No --opencode-config → fall back to the embedded default. The cmd
+	// should still run; the Summary should advertise the safe default shape.
+	repo := initRepoForCmdTest(t)
+	fake := &fakeRunner{html: "<!doctype html><html></html>"}
+	cmd := newHTMLCmd(fake.runner())
+	cmd.SetArgs([]string{"--repo", repo, "--agent", "opencode", "--force"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "narrow git allowlist") {
+		t.Errorf("stdout should advertise the safe default shape: %s", out)
+	}
+	if strings.Contains(out, "sandbox: yes") {
+		t.Errorf("stdout should NOT mention sandbox when --is-sandbox is off: %s", out)
+	}
+	if fake.calls != 1 {
+		t.Errorf("runner calls = %d, want 1", fake.calls)
+	}
+}
+
+func TestHTMLCmd_OpencodeSandbox(t *testing.T) {
+	// --is-sandbox opts into the permissive default. Summary must say so,
+	// and (per TestGenerate_OpencodeSandboxArgs) the agent invocation gets
+	// --dangerously-skip-permissions.
+	repo := initRepoForCmdTest(t)
+	fake := &fakeRunner{html: "<!doctype html><html></html>"}
+	cmd := newHTMLCmd(fake.runner())
+	cmd.SetArgs([]string{"--repo", repo, "--agent", "opencode", "--is-sandbox", "--force"})
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "sandbox: yes") {
+		t.Errorf("stdout missing sandbox marker: %s", out)
+	}
+	if !strings.Contains(out, "sandbox default") {
+		t.Errorf("stdout should advertise the sandbox default shape: %s", out)
+	}
+	joined := strings.Join(fake.gotArgs, " ")
+	if !strings.Contains(joined, "--dangerously-skip-permissions") {
+		t.Errorf("sandbox invocation missing --dangerously-skip-permissions: %s", joined)
 	}
 }
 
