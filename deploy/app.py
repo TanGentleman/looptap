@@ -54,8 +54,11 @@ BINARY_DST = "/opt/looptap/looptap"
 SAMPLE_DST = "/root/.claude/CLAUDE.md"
 OPENCODE_CFG_DST = "/opt/looptap/opencode.hosted.json"
 
-# owner/name — no slashes, no traversal, friendly with git remote slugs.
-_REPO_SLUG_RE = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
+# owner/name — alphanumeric bookends on each segment keep bare `.` / `..`
+# out so `rm -rf "$dest"` can't climb out of /repos. Defense-in-depth
+# containment check also runs in _validate_repo_slug.
+_SEGMENT = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
+_REPO_SLUG_RE = re.compile(rf"{_SEGMENT}/{_SEGMENT}")
 
 app = modal.App(APP_NAME)
 
@@ -88,6 +91,13 @@ def _validate_repo_slug(repo: str) -> str:
     trimmed = repo.strip().strip("/")
     if not _REPO_SLUG_RE.fullmatch(trimmed):
         raise ValueError(f"repo must match 'owner/name' with [A-Za-z0-9._-] (got {repo!r})")
+    # Belt + suspenders: even if the regex ever loosens, refuse anything that
+    # normalizes outside REPOS_MOUNT. Blocks `..` components and symlink-style
+    # shenanigans before we shell out with the value.
+    root = REPOS_MOUNT.rstrip("/")
+    resolved = os.path.normpath(os.path.join(root, trimmed))
+    if resolved != root and not resolved.startswith(root + "/"):
+        raise ValueError(f"repo path {resolved!r} escapes {root!r}")
     return trimmed
 
 
