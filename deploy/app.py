@@ -2,18 +2,29 @@
 
 Three hats:
 - wraps `looptap analyze` behind a FastAPI endpoint (the original stub)
-- lists git clones pre-indexed into the `looptap-repos` Modal volume
+- indexes + lists git clones in the `looptap-repos` Modal volume
 - fans an HTML branch report out to a disposable Modal sandbox running opencode
 
 Secrets: GOOGLE_API_KEY lives in the `looptap-secrets` Modal secret (populated
-by scripts/setup.sh). We forward it as both GOOGLE_API_KEY (for looptap's Gemini
-wrapper) and GOOGLE_GENERATIVE_AI_API_KEY (what opencode's google provider
-reads).
+by scripts/setup.sh). We mirror it into GOOGLE_GENERATIVE_AI_API_KEY (what
+opencode's google provider reads) for sandbox runs.
 
-Repo convention inside the `looptap-repos` volume: one git clone per path
-`<owner>/<name>`. Drop one in with `modal volume put looptap-repos <local-clone>
-<owner>/<name>` (or bootstrap from a warm-up function) and it lights up on
-GET /repos.
+Repo convention inside `looptap-repos`: one git clone per path `<owner>/<name>`.
+POST /index-repo seeds it from a public GitHub URL; GET /repos lists what's
+there; POST /analyze-repo spawns an opencode sandbox against a branch.
+
+Test after deploy:
+
+    curl -H "Modal-Key: $K" -H "Modal-Secret: $S" \\
+         -X POST "$URL/index-repo" \\
+         -H 'content-type: application/json' \\
+         -d '{"repo":"TanGentleman/looptap","ref":"main"}'
+    curl -H "Modal-Key: $K" -H "Modal-Secret: $S" "$URL/repos"
+    curl -H "Modal-Key: $K" -H "Modal-Secret: $S" \\
+         -X POST "$URL/analyze-repo" \\
+         -H 'content-type: application/json' \\
+         -d '{"repo":"TanGentleman/looptap","branch":"main"}' \\
+         -o report.html
 """
 from __future__ import annotations
 
@@ -33,6 +44,7 @@ SECRET_NAME = "looptap-secrets"
 REPOS_VOLUME_NAME = "looptap-repos"
 REPOS_MOUNT = "/repos"
 SANDBOX_TIMEOUT = 1200  # opencode can chew on a diff for a while
+INDEX_TIMEOUT = 600
 
 BINARY_SRC = Path(__file__).parent / "bin" / "looptap"
 SAMPLE_SRC = Path(__file__).parent / "claude.sample.md"
@@ -51,54 +63,28 @@ repos_volume = modal.Volume.from_name(REPOS_VOLUME_NAME, create_if_missing=True)
 
 image = (
     modal.Image.debian_slim(python_version="3.12")
-    .apt_install("ca-certificates", "git")
+    .apt_install("ca-certificates")
     .pip_install("fastapi==0.115.0")
     .add_local_file(str(BINARY_SRC), BINARY_DST, copy=True)
     .add_local_file(str(SAMPLE_SRC), SAMPLE_DST, copy=True)
     .dockerfile_commands(f"RUN chmod +x {BINARY_DST}")
 )
 
-# Sandbox image: opencode (installed from the upstream one-liner), git for
-# refreshing the clone, plus the looptap binary so the sandbox can reuse the
+# Sandbox image: opencode on PATH (via env, not a symlink — keeps upgrades
+# idempotent), git for clone/fetch, plus the looptap binary so we reuse the
 # html command's opencode wiring instead of re-implementing the prompt.
 sandbox_image = (
     modal.Image.debian_slim(python_version="3.12")
-    .apt_install("ca-certificates", "curl", "git", "unzip")
-    .run_commands(
-        "curl -fsSL https://opencode.ai/install | bash",
-        "ln -sf /root/.opencode/bin/opencode /usr/local/bin/opencode",
-    )
+    .apt_install("ca-certificates", "curl", "git")
+    .run_commands("curl -fsSL https://opencode.ai/install | bash")
+    .env({"PATH": "/root/.opencode/bin:${PATH}"})
     .add_local_file(str(BINARY_SRC), BINARY_DST, copy=True)
     .add_local_file(str(OPENCODE_CFG_SRC), OPENCODE_CFG_DST, copy=True)
     .dockerfile_commands(f"RUN chmod +x {BINARY_DST}")
 )
 
 
-def _subprocess_env() -> dict[str, str]:
-    """Mirror GOOGLE_API_KEY into GOOGLE_GENERATIVE_AI_API_KEY so both
-    looptap (Gemini SDK) and opencode (google provider) are happy from the
-    same secret.
-    """
-    key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GOOGLE_GENERATIVE_AI_API_KEY", "")
-    return {
-        **os.environ,
-        "GOOGLE_API_KEY": key,
-        "GOOGLE_GENERATIVE_AI_API_KEY": key,
-        "HOME": "/root",
-    }
-
-
-def _run_analyze(file_path: str, as_json: bool) -> tuple[int, str, str]:
-    """Shell out to looptap analyze. Returns (exit_code, stdout, stderr)."""
-    cmd = [BINARY_DST, "analyze", "--file", file_path]
-    if as_json:
-        cmd.append("--json")
-    proc = subprocess.run(cmd, env=_subprocess_env(), capture_output=True, text=True, timeout=120)
-    return proc.returncode, proc.stdout, proc.stderr
-
-
 def _validate_repo_slug(repo: str) -> str:
-    """Accept only `owner/name` with safe chars. Returns the cleaned slug."""
     trimmed = repo.strip().strip("/")
     if not _REPO_SLUG_RE.fullmatch(trimmed):
         raise ValueError(f"repo must match 'owner/name' with [A-Za-z0-9._-] (got {repo!r})")
@@ -106,9 +92,9 @@ def _validate_repo_slug(repo: str) -> str:
 
 
 def _list_indexed_repos() -> list[dict[str, Any]]:
-    """Walk the mounted volume and collect <owner>/<name> entries. We reload
-    the volume first so a `modal volume put` from outside this container
-    becomes visible without redeploying.
+    """Walk the mounted volume and collect <owner>/<name> entries. Reload
+    first so a commit from another container becomes visible without a
+    cold start.
     """
     repos_volume.reload()
     root = Path(REPOS_MOUNT)
@@ -121,64 +107,98 @@ def _list_indexed_repos() -> list[dict[str, Any]]:
         for repo_dir in sorted(owner_dir.iterdir()):
             if not repo_dir.is_dir() or repo_dir.name.startswith("."):
                 continue
-            is_git = (repo_dir / ".git").is_dir() or (repo_dir / "HEAD").is_file()
             out.append({
                 "repo": f"{owner_dir.name}/{repo_dir.name}",
                 "path": str(repo_dir),
-                "is_git": is_git,
+                "is_git": (repo_dir / ".git").is_dir(),
             })
     return out
 
 
-def _build_sandbox_script(repo: str, branch: str) -> str:
-    """Refresh the cached clone, hardlink-clone it into /tmp (so concurrent
-    callers don't stomp a shared working tree), pin the branch, and hand off
-    to `looptap html`. The per-sandbox working copy is disposable — the
-    container dies with the request.
-    """
-    src = shlex.quote(f"{REPOS_MOUNT}/{repo}")
-    br = shlex.quote(branch)
-    opencode_cfg = shlex.quote(OPENCODE_CFG_DST)
-    binary = shlex.quote(BINARY_DST)
-    return (
-        "set -euo pipefail\n"
-        f"git -C {src} fetch --all --prune --tags\n"
-        "work=$(mktemp -d /tmp/looptap-work.XXXXXX)\n"
-        f"git clone --local {src} \"$work/repo\"\n"
-        "cd \"$work/repo\"\n"
-        "git fetch origin --prune\n"
-        f"git checkout {br} 2>/dev/null || git checkout -b {br} origin/{br}\n"
-        f"{binary} html --agent opencode --is-sandbox "
-        f"--opencode-config {opencode_cfg} "
-        f"--repo . --branch {br} --force\n"
-    )
+def _run_analyze(file_path: str, as_json: bool) -> tuple[int, str, str]:
+    """Shell out to looptap analyze. Returns (exit_code, stdout, stderr)."""
+    key = os.environ.get("GOOGLE_API_KEY", "")
+    env = {**os.environ, "GOOGLE_API_KEY": key, "HOME": "/root"}
+    cmd = [BINARY_DST, "analyze", "--file", file_path]
+    if as_json:
+        cmd.append("--json")
+    proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=120)
+    return proc.returncode, proc.stdout, proc.stderr
 
 
-def _run_opencode_sandbox(repo: str, branch: str) -> tuple[int, str, str]:
-    """Spawn a sandbox, run the refresh+checkout+looptap-html script, return
-    (exit_code, stdout, stderr). Stdout is the opencode-generated HTML.
+def _sandbox_run(script: str, timeout: int) -> tuple[int, str, str]:
+    """Run a bash script in a disposable sandbox with the repos volume mounted
+    and both Gemini env var names populated. Returns (exit_code, stdout, stderr).
     """
     key = os.environ.get("GOOGLE_API_KEY", "")
-    sandbox = modal.Sandbox.create(
-        "bash", "-c", _build_sandbox_script(repo, branch),
+    sb = modal.Sandbox.create(
+        "bash", "-lc", script,
         image=sandbox_image,
         volumes={REPOS_MOUNT: repos_volume},
         secrets=[
             modal.Secret.from_name(SECRET_NAME),
-            # opencode's google provider reads GOOGLE_GENERATIVE_AI_API_KEY;
-            # the looptap-secrets bundle only has GOOGLE_API_KEY, so mirror it.
+            # looptap-secrets carries GOOGLE_API_KEY; opencode's google provider
+            # wants GOOGLE_GENERATIVE_AI_API_KEY. Mirror it in.
             modal.Secret.from_dict({"GOOGLE_GENERATIVE_AI_API_KEY": key}),
         ],
         app=app,
-        timeout=SANDBOX_TIMEOUT,
+        timeout=timeout,
     )
     try:
-        sandbox.wait()
-        stdout = sandbox.stdout.read()
-        stderr = sandbox.stderr.read()
-        return sandbox.returncode, stdout, stderr
+        sb.wait()
+        return sb.returncode, sb.stdout.read(), sb.stderr.read()
     finally:
-        sandbox.terminate()
+        sb.terminate()
+
+
+def _index_script(repo: str, ref: str) -> str:
+    """Shallow clone into the volume (or fast-forward an existing clone).
+    Borrows the fetch/checkout/reset idempotency trick from the opencode-
+    sandbox branch — always ends with the working tree pinned at origin/<ref>.
+    """
+    dest = shlex.quote(f"{REPOS_MOUNT}/{repo}")
+    r = shlex.quote(ref)
+    url = shlex.quote(f"https://github.com/{repo}.git")
+    return (
+        "set -euo pipefail\n"
+        f"dest={dest}\n"
+        "if [ -d \"$dest/.git\" ]; then\n"
+        f"  echo \"updating existing clone at $dest\"\n"
+        f"  git -C \"$dest\" fetch --depth 1 origin {r}\n"
+        f"  git -C \"$dest\" checkout -q {r} 2>/dev/null || "
+        f"git -C \"$dest\" checkout -q -B {r} origin/{r}\n"
+        f"  git -C \"$dest\" reset --hard origin/{r}\n"
+        "else\n"
+        f"  echo \"fresh clone of {repo}@{ref}\"\n"
+        "  mkdir -p \"$(dirname \"$dest\")\"\n"
+        "  rm -rf \"$dest\"\n"
+        f"  git clone --depth 1 --branch {r} {url} \"$dest\"\n"
+        "fi\n"
+        "git -C \"$dest\" --no-pager log -1 --oneline\n"
+    )
+
+
+def _analyze_script(repo: str, branch: str) -> str:
+    """Refresh the cached clone, hardlink-clone into /tmp (so concurrent
+    /analyze-repo calls don't stomp a shared working tree), pin the branch,
+    then hand off to `looptap html`.
+    """
+    src = shlex.quote(f"{REPOS_MOUNT}/{repo}")
+    b = shlex.quote(branch)
+    binary = shlex.quote(BINARY_DST)
+    cfg = shlex.quote(OPENCODE_CFG_DST)
+    return (
+        "set -euo pipefail\n"
+        f"git -C {src} fetch --depth 1 origin {b} || true\n"
+        "work=$(mktemp -d /tmp/looptap-work.XXXXXX)/repo\n"
+        f"git clone --local {src} \"$work\"\n"
+        "cd \"$work\"\n"
+        f"git fetch --depth 1 origin {b}\n"
+        f"git checkout -q {b} 2>/dev/null || git checkout -q -B {b} origin/{b}\n"
+        f"{binary} html --agent opencode --is-sandbox "
+        f"--opencode-config {cfg} "
+        f"--repo . --branch {b} --force\n"
+    )
 
 
 @app.function(
@@ -201,7 +221,9 @@ def web():
             "  GET  /healthz                        liveness\n"
             "  GET  /analyze                        run `looptap analyze` on the sample CLAUDE.md\n"
             "  GET  /analyze?json=1                 raw JSON findings\n"
-            "  GET  /repos                          list repos indexed into the looptap-repos volume\n"
+            "  GET  /repos                          list repos in the looptap-repos volume\n"
+            "  POST /index-repo                     shallow-clone a public GitHub repo into the volume\n"
+            '       body: {"repo":"owner/name","ref":"main"}\n'
             "  POST /analyze-repo                   opencode sandbox against owner/name@branch\n"
             '       body: {"repo":"owner/name","branch":"main"}\n'
         )
@@ -249,14 +271,34 @@ def web():
             raise HTTPException(status_code=500, detail=f"listing {REPOS_MOUNT}: {exc}")
         return {"volume": REPOS_VOLUME_NAME, "mount": REPOS_MOUNT, "repos": entries}
 
-    @api.post("/analyze-repo")
-    def analyze_repo(payload: dict[str, Any] = Body(...)):
-        raw_repo = payload.get("repo") or ""
-        branch = (payload.get("branch") or "main").strip()
+    @api.post("/index-repo")
+    def index_repo(payload: dict[str, Any] = Body(...)):
         try:
-            repo = _validate_repo_slug(raw_repo)
+            repo = _validate_repo_slug(payload.get("repo") or "")
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
+        ref = (payload.get("ref") or "main").strip()
+        if not ref:
+            raise HTTPException(status_code=400, detail="ref must not be empty")
+
+        code, out, err = _sandbox_run(_index_script(repo, ref), INDEX_TIMEOUT)
+        if code != 0:
+            raise HTTPException(
+                status_code=502,
+                detail={"exit_code": code, "stderr": err.strip() or None, "stdout": out},
+            )
+        # Sandbox auto-commits the volume on exit; reload so the next GET /repos
+        # in this same container sees the new entry without a cold start.
+        repos_volume.reload()
+        return {"repo": repo, "ref": ref, "log": out.strip()}
+
+    @api.post("/analyze-repo")
+    def analyze_repo(payload: dict[str, Any] = Body(...)):
+        try:
+            repo = _validate_repo_slug(payload.get("repo") or "")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        branch = (payload.get("branch") or "main").strip()
         if not branch:
             raise HTTPException(status_code=400, detail="branch must not be empty")
 
@@ -265,9 +307,8 @@ def web():
             raise HTTPException(
                 status_code=404,
                 detail=(
-                    f"{repo!r} not found in volume {REPOS_VOLUME_NAME!r}. "
-                    f"Index it with `modal volume put {REPOS_VOLUME_NAME} "
-                    f"<local-clone> {repo}`."
+                    f"{repo!r} not indexed. POST /index-repo {{\"repo\":\"{repo}\","
+                    f"\"ref\":\"{branch}\"}} first."
                 ),
             )
         if not os.environ.get("GOOGLE_API_KEY"):
@@ -276,7 +317,7 @@ def web():
                 detail=f"GOOGLE_API_KEY missing from '{SECRET_NAME}'.",
             )
 
-        code, out, err = _run_opencode_sandbox(repo, branch)
+        code, out, err = _sandbox_run(_analyze_script(repo, branch), SANDBOX_TIMEOUT)
         if code != 0:
             raise HTTPException(
                 status_code=502,
