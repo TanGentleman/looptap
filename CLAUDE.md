@@ -1,25 +1,17 @@
-# looptap
+# CLAUDE.md
 
-`strace` but for vibes. Reads coding agent transcripts, spots behavioral patterns, dumps it all into SQLite for datasette.
+Notes for agents working in this repo. The full picture lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## Build
+## Smoke build
 
 ```bash
 go build -o looptap . && ./looptap info --db /tmp/test.db
 ```
 
-## Status
+## Directives
 
-Full pipeline works — Claude Code parser, all 7 signal detectors, SQLite, datasette views, LLM advisor. Codex parser is stubbed. See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
-
-## Rules
-
-- Standard library first. Dependencies earn their keep.
-- No ORMs. Raw SQL only.
-- Table-driven tests.
-- `cmd/` stays boring — flag parsing and one function call.
-- `internal/` is a library — no `os.Exit`, no global state.
-
-## Tone
-
-Have fun with it. Commits, comments, error messages — if it reads like a textbook, rewrite it. Check `git log` for the vibe.
+- Stdlib first; new dependencies have to earn it.
+- Raw SQL only — no ORM.
+- Tests are table-driven.
+- `cmd/` is wiring (flag parsing, one call into `internal/`); `internal/` is library-shaped — no `os.Exit`, no globals.
+- Have fun with commits, comments, and error messages. `git log` sets the tone.
