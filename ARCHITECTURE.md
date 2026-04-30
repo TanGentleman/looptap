@@ -158,6 +158,19 @@ func MatchPhrases(text string, phrases []string, maxEditDist int) (bool, string)
 
 `MatchPhrases` does exact substring match first, then falls back to Levenshtein edit distance on word-level sliding windows.
 
+## Query (`cmd/query.go` + `db.QuerySessions`)
+
+The `query` command is the read side of the pipeline: "which transcripts hit signals X, Y, Z?". One SQL `JOIN sessions ↔ signals` filtered by a `db.QueryFilter`, with the matching signals attached to each session.
+
+**Input** — flags: `--signal` (repeatable, OR-joined), `--min-confidence`, `--source`, `--project` (substring), `--since` / `--until` (`YYYY-MM-DD` or RFC3339), `--limit`.
+
+**Output** — one record per session, sorted `started_at DESC`:
+- `--format jsonl` (default): `{session_id, source, project, raw_path, file_hash, started_at, ended_at, signals:[…]}`. Only *matching* signals — caller asked for those.
+- `--format paths`: `raw_path` only. `xargs tar` fodder.
+- `--format tsv`: `session_id\traw_path\tsignal_count\ttypes`.
+
+Empty match exits 0 — silent is a valid answer. Bad format strings exit 1.
+
 ## Advisor (`internal/advise/`)
 
 The `advise` command closes the loop: signals go in, CLAUDE.md rules come out.
