@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"looptap/internal/parser"
 	"looptap/internal/signal"
+	"strings"
 	"time"
 )
 
@@ -229,6 +230,146 @@ func (db *DB) ClearSignals(sessionID string) error {
 	}
 	_, err = db.conn.Exec(`UPDATE sessions SET signaled_at = NULL WHERE id = ?`, sessionID)
 	return err
+}
+
+// QueryFilter narrows which sessions QuerySessions returns.
+//
+// Zero-value fields are ignored. Signals is OR-matched: a session is included
+// if any of its signals matches any of the listed types. When Signals is set,
+// only matching signals come back in the result — the caller asked for those,
+// not the whole grab bag.
+type QueryFilter struct {
+	Signals       []string  // signal types (OR). empty = any.
+	MinConfidence float64   // confidence >= this. 0 = no floor.
+	Source        string    // exact match on sessions.source.
+	Project       string    // substring match on sessions.project.
+	Since         time.Time // started_at >= Since.
+	Until         time.Time // started_at <= Until.
+	Limit         int       // max sessions returned. 0 = no limit.
+}
+
+// SessionMatch is one session that passed the filter, with the matching signals attached.
+type SessionMatch struct {
+	SessionID string        `json:"session_id"`
+	Source    string        `json:"source"`
+	Project   string        `json:"project,omitempty"`
+	RawPath   string        `json:"raw_path"`
+	FileHash  string        `json:"file_hash"`
+	StartedAt string        `json:"started_at,omitempty"`
+	EndedAt   string        `json:"ended_at,omitempty"`
+	Signals   []MatchSignal `json:"signals"`
+}
+
+// MatchSignal is the signal subset surfaced by QuerySessions.
+type MatchSignal struct {
+	Type       string  `json:"type"`
+	Category   string  `json:"category"`
+	Confidence float64 `json:"confidence"`
+	TurnIdx    *int    `json:"turn_idx,omitempty"`
+	Evidence   string  `json:"evidence,omitempty"`
+}
+
+// QuerySessions returns sessions matching the filter, each with its matching signals.
+// Results are ordered by started_at DESC (then session id, for determinism).
+func (db *DB) QuerySessions(f QueryFilter) ([]SessionMatch, error) {
+	var where []string
+	var args []any
+
+	if len(f.Signals) > 0 {
+		placeholders := strings.Repeat("?,", len(f.Signals))
+		placeholders = placeholders[:len(placeholders)-1]
+		where = append(where, fmt.Sprintf("sig.signal_type IN (%s)", placeholders))
+		for _, t := range f.Signals {
+			args = append(args, t)
+		}
+	}
+	if f.MinConfidence > 0 {
+		where = append(where, "sig.confidence >= ?")
+		args = append(args, f.MinConfidence)
+	}
+	if f.Source != "" {
+		where = append(where, "s.source = ?")
+		args = append(args, f.Source)
+	}
+	if f.Project != "" {
+		where = append(where, "s.project LIKE ?")
+		args = append(args, "%"+f.Project+"%")
+	}
+	if !f.Since.IsZero() {
+		where = append(where, "s.started_at >= ?")
+		args = append(args, f.Since.UTC().Format(time.RFC3339))
+	}
+	if !f.Until.IsZero() {
+		where = append(where, "s.started_at <= ?")
+		args = append(args, f.Until.UTC().Format(time.RFC3339))
+	}
+
+	q := `SELECT s.id, s.source, s.project, s.raw_path, s.file_hash, s.started_at, s.ended_at,
+		sig.signal_type, sig.signal_category, sig.confidence, sig.turn_idx, sig.evidence
+		FROM sessions s
+		JOIN signals sig ON sig.session_id = s.id`
+	if len(where) > 0 {
+		q += " WHERE " + strings.Join(where, " AND ")
+	}
+	// Order by start desc so newest sessions surface first; signal id keeps
+	// signal ordering inside a session stable across runs.
+	q += " ORDER BY s.started_at DESC, s.id, sig.id"
+
+	rows, err := db.conn.Query(q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("query sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var out []SessionMatch
+	byID := make(map[string]int) // session id -> index in out
+
+	for rows.Next() {
+		var (
+			id, source, rawPath, fileHash string
+			project, startedAt, endedAt   sql.NullString
+			sigType, sigCat               string
+			confidence                    float64
+			turnIdx                       sql.NullInt64
+			evidence                      sql.NullString
+		)
+		if err := rows.Scan(&id, &source, &project, &rawPath, &fileHash,
+			&startedAt, &endedAt,
+			&sigType, &sigCat, &confidence, &turnIdx, &evidence); err != nil {
+			return nil, fmt.Errorf("scan: %w", err)
+		}
+
+		idx, ok := byID[id]
+		if !ok {
+			if f.Limit > 0 && len(out) >= f.Limit {
+				continue
+			}
+			out = append(out, SessionMatch{
+				SessionID: id,
+				Source:    source,
+				Project:   project.String,
+				RawPath:   rawPath,
+				FileHash:  fileHash,
+				StartedAt: startedAt.String,
+				EndedAt:   endedAt.String,
+			})
+			idx = len(out) - 1
+			byID[id] = idx
+		}
+
+		ms := MatchSignal{
+			Type:       sigType,
+			Category:   sigCat,
+			Confidence: confidence,
+			Evidence:   evidence.String,
+		}
+		if turnIdx.Valid {
+			i := int(turnIdx.Int64)
+			ms.TurnIdx = &i
+		}
+		out[idx].Signals = append(out[idx].Signals, ms)
+	}
+	return out, rows.Err()
 }
 
 func formatTime(t time.Time) *string {

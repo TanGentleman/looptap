@@ -20,7 +20,13 @@ That parses every transcript under `~/.claude/projects/`, fires the seven detect
 uvx datasette ~/.looptap/looptap.db --metadata metadata.json
 ```
 
-That's the tour. `looptap --help` lists the rest (`advise`, `analyze`, `html`, `parse`, `signal`, `version`); the why-and-how lives in [ARCHITECTURE.md](ARCHITECTURE.md).
+That's the tour. `looptap --help` lists the rest (`advise`, `analyze`, `html`, `parse`, `query`, `signal`, `version`); the why-and-how lives in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+Pipe rough sessions to whatever tool wants them next:
+
+```bash
+looptap query --signal failure --signal misalignment --format paths | xargs tar -czf bad-runs.tgz
+```
 
 ## More
 
