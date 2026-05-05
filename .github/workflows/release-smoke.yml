@@ -19,6 +19,8 @@ jobs:
             asset: looptap-darwin-arm64
     runs-on: ${{ matrix.runner }}
     steps:
+      - uses: actions/checkout@v4 # for scripts/smoke-db.sh
+
       - name: Download release binary
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -30,8 +32,7 @@ jobs:
 
       - name: "Smoke: binary boots and SQLite works"
         run: |
-          ./looptap info --db /tmp/smoke.db
-          test -f /tmp/smoke.db
+          bash scripts/smoke-db.sh ./looptap /tmp/smoke.db
 
   install-script:
     name: install.sh
@@ -47,5 +48,4 @@ jobs:
       - name: "Smoke: installed binary boots"
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          looptap info --db /tmp/smoke.db
-          test -f /tmp/smoke.db
+          bash scripts/smoke-db.sh "$(command -v looptap)" /tmp/smoke.db
