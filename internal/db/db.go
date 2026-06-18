@@ -58,6 +58,8 @@ var migrations = []string{
 		git_branch  TEXT,
 		raw_path    TEXT NOT NULL,
 		file_hash   TEXT NOT NULL,
+		owner_user  TEXT,
+		owner_team  TEXT,
 		parsed_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
 		signaled_at TEXT
 	)`,
@@ -92,5 +94,67 @@ func (db *DB) migrate() error {
 			return fmt.Errorf("executing migration: %w\nSQL: %s", err, m)
 		}
 	}
+	return db.ensureSessionColumns()
+}
+
+// ensureSessionColumns brings older databases up to the current sessions shape.
+// SQLite has no "ADD COLUMN IF NOT EXISTS", so we ask the table what it already
+// has and only add what's missing — that keeps migrate() idempotent across runs.
+func (db *DB) ensureSessionColumns() error {
+	have, err := db.columnSet("sessions")
+	if err != nil {
+		return fmt.Errorf("inspecting sessions columns: %w", err)
+	}
+
+	// column name -> DDL to add it. Attribution arrived after the first schema,
+	// so existing rows get NULL (read back as "" — an honest "unknown owner").
+	additions := []struct{ name, ddl string }{
+		{"owner_user", `ALTER TABLE sessions ADD COLUMN owner_user TEXT`},
+		{"owner_team", `ALTER TABLE sessions ADD COLUMN owner_team TEXT`},
+	}
+	for _, a := range additions {
+		if have[a.name] {
+			continue
+		}
+		if _, err := db.conn.Exec(a.ddl); err != nil {
+			return fmt.Errorf("adding column %s: %w", a.name, err)
+		}
+	}
+
+	// Indexes live here (not in the migrations slice) because they reference
+	// columns that only exist after the ALTERs above land.
+	for _, idx := range []string{
+		`CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(owner_user)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_team ON sessions(owner_team)`,
+	} {
+		if _, err := db.conn.Exec(idx); err != nil {
+			return fmt.Errorf("creating attribution index: %w", err)
+		}
+	}
 	return nil
+}
+
+// columnSet returns the set of column names on a table.
+func (db *DB) columnSet(table string) (map[string]bool, error) {
+	rows, err := db.conn.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cols := map[string]bool{}
+	for rows.Next() {
+		var (
+			cid         int
+			name, ctype string
+			notNull     int
+			dflt        sql.NullString
+			pk          int
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dflt, &pk); err != nil {
+			return nil, err
+		}
+		cols[name] = true
+	}
+	return cols, rows.Err()
 }

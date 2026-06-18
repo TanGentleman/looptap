@@ -10,9 +10,19 @@ import (
 )
 
 func NewParseCmd(dbPath *string) *cobra.Command {
-	return &cobra.Command{
+	var (
+		user string
+		team string
+	)
+
+	cmd := &cobra.Command{
 		Use:   "parse",
 		Short: "Discover and parse agent transcripts into SQLite",
+		Long: `Discover and parse agent transcripts into SQLite.
+
+Use --user / --team to attribute the parsed sessions. When you collect many
+people's transcripts into one database, that attribution is what lets
+'looptap aggregate' roll signals up by person and team.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load()
 			if err != nil {
@@ -22,6 +32,16 @@ func NewParseCmd(dbPath *string) *cobra.Command {
 			dbp := *dbPath
 			if dbp == "" {
 				dbp = cfg.Database.Path
+			}
+
+			// Attribution: flag wins, config fills in.
+			owner := user
+			if owner == "" {
+				owner = cfg.Ingest.User
+			}
+			ownerTeam := team
+			if ownerTeam == "" {
+				ownerTeam = cfg.Ingest.Team
 			}
 
 			database, err := db.Open(dbp)
@@ -67,6 +87,8 @@ func NewParseCmd(dbPath *string) *cobra.Command {
 					continue
 				}
 
+				session.User = owner
+				session.Team = ownerTeam
 				if err := database.InsertSession(session); err != nil {
 					fmt.Fprintf(cmd.ErrOrStderr(), "  error inserting %s: %v\n", path, err)
 					errors++
@@ -79,4 +101,9 @@ func NewParseCmd(dbPath *string) *cobra.Command {
 			return nil
 		},
 	}
+
+	cmd.Flags().StringVar(&user, "user", "", "attribute parsed sessions to this user (default: [ingest].user in config)")
+	cmd.Flags().StringVar(&team, "team", "", "attribute parsed sessions to this team (default: [ingest].team in config)")
+
+	return cmd
 }

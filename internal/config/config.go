@@ -14,6 +14,14 @@ type Config struct {
 	Signals  SignalsConfig  `toml:"signals"`
 	Phrases  PhrasesConfig  `toml:"phrases"`
 	Advise   AdviseConfig   `toml:"advise"`
+	Ingest   IngestConfig   `toml:"ingest"`
+}
+
+// IngestConfig stamps attribution onto every session this machine parses, so a
+// central database can tell whose transcript is whose. Flags override it.
+type IngestConfig struct {
+	User string `toml:"user"` // who ran these sessions
+	Team string `toml:"team"` // which team they belong to
 }
 
 type AdviseConfig struct {
@@ -37,12 +45,12 @@ type SignalsConfig struct {
 }
 
 type PhrasesConfig struct {
-	Misalignment      string `toml:"misalignment"`
-	MisalignmentExtra string `toml:"misalignment_extra"`
-	Disengagement     string `toml:"disengagement"`
+	Misalignment       string `toml:"misalignment"`
+	MisalignmentExtra  string `toml:"misalignment_extra"`
+	Disengagement      string `toml:"disengagement"`
 	DisengagementExtra string `toml:"disengagement_extra"`
-	Satisfaction      string `toml:"satisfaction"`
-	SatisfactionExtra string `toml:"satisfaction_extra"`
+	Satisfaction       string `toml:"satisfaction"`
+	SatisfactionExtra  string `toml:"satisfaction_extra"`
 }
 
 // DefaultDBPath returns the default database path.

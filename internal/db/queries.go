@@ -31,11 +31,12 @@ func (db *DB) InsertSession(s parser.Session) error {
 		}
 	}
 
-	_, err = tx.Exec(`INSERT INTO sessions (id, source, project, session_id, started_at, ended_at, model, total_turns, tool_calls, git_branch, raw_path, file_hash)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err = tx.Exec(`INSERT INTO sessions (id, source, project, session_id, started_at, ended_at, model, total_turns, tool_calls, git_branch, raw_path, file_hash, owner_user, owner_team)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.Source, s.Project, s.SessionID,
 		formatTime(s.StartedAt), formatTime(s.EndedAt),
 		s.Model, len(s.Turns), toolCalls, s.GitBranch, s.RawPath, s.FileHash,
+		nullIfEmpty(s.User), nullIfEmpty(s.Team),
 	)
 	if err != nil {
 		return fmt.Errorf("insert session: %w", err)
@@ -378,4 +379,13 @@ func formatTime(t time.Time) *string {
 	}
 	s := t.UTC().Format(time.RFC3339)
 	return &s
+}
+
+// nullIfEmpty stores "" as SQL NULL so an unattributed session reads back as
+// the empty string rather than a literal empty string we'd have to special-case.
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }

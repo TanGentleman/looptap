@@ -88,6 +88,8 @@ CREATE TABLE sessions (
     git_branch  TEXT,
     raw_path    TEXT NOT NULL,
     file_hash   TEXT NOT NULL,
+    owner_user  TEXT,   -- attribution, stamped at ingest (NULL = unattributed)
+    owner_team  TEXT,
     parsed_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ','now')),
     signaled_at TEXT
 );
@@ -114,7 +116,7 @@ CREATE TABLE signals (
 );
 ```
 
-Indexes on `signals(signal_type)`, `signals(session_id)`, `sessions(source)`, `sessions(project)`.
+Indexes on `signals(signal_type)`, `signals(session_id)`, `sessions(source)`, `sessions(project)`, `sessions(owner_user)`, `sessions(owner_team)`.
 
 ## Claude Code JSONL format
 
@@ -170,6 +172,37 @@ The `query` command is the read side of the pipeline: "which transcripts hit sig
 - `--format tsv`: `session_id\traw_path\tsignal_count\ttypes`.
 
 Empty match exits 0 — silent is a valid answer. Bad format strings exit 1.
+
+## Attribution (`owner_user` / `owner_team`)
+
+Transcripts don't carry a username, but a fleet-wide database needs to know whose session is whose. So attribution is applied **at ingest, not parsed**: `parse`/`run` take `--user` and `--team` flags (or `[ingest] user`/`team` in config), and stamp them onto every session they write. Parsers leave `Session.User`/`Session.Team` empty — the cmd layer fills them in. Unattributed sessions store SQL `NULL` (read back as `""`), and `COUNT(DISTINCT owner_user)` quietly ignores them, so an unlabeled database still reports honest cohort sizes.
+
+The columns arrived after the first schema, so `db.migrate()` ends with `ensureSessionColumns()`: it reads `PRAGMA table_info(sessions)` and only runs the `ALTER TABLE ADD COLUMN` it's missing — SQLite has no `ADD COLUMN IF NOT EXISTS`, and we want `Open()` to stay idempotent. The `owner_user`/`owner_team` indexes are created there too (after the columns exist), not in the `migrations` slice.
+
+## Aggregator (`internal/aggregate/`)
+
+The `aggregate` command is `query`/`advise` scaled out from one transcript (or one project) to a whole **fleet** — many users, many teams. It answers "across everyone, what keeps going wrong, and where's a fix worth the most?". Everything is plain SQL: the report is reproducible and needs no API key.
+
+```
+SQLite (sessions ⋈ signals ⋈ turns) → aggregate.Run → Report (six rollups)
+                                                    └→ Synthesize (optional LLM) → fleet recommendations
+```
+
+**`types.go`** — `Filter` (the session-scoped cousin of `db.QueryFilter`: team, project, source, since/until, min-confidence, top-N) and `Report`, whose six sections are the deliverable:
+- **Cohort** — sessions, distinct users, distinct teams, signals, time window. The denominator for everything else.
+- **SignalBreakdown** — per signal type: occurrences, sessions affected, *users* affected, avg confidence, and `AffectedRate` (sessions-affected ÷ cohort). Rate is the metric that survives a growing fleet; raw counts only go up.
+- **FailingTools** — the "failed tool calls" centerpiece. Failures and loops attributed back to the tool that ran, with failure/loop counts and sessions/users/teams affected.
+- **Teams** — ranked by signals *per session*, not raw count, so a big team doesn't automatically look like the troubled one.
+- **Users** — the top-N noisiest attributed users, with team and dominant signal.
+- **RecurringPatterns** — identical evidence strings clustered across the cohort, ordered by *distinct users* touched. Eight people hitting the same wall is a process problem; one person hitting it eighty times is a bad afternoon.
+
+**`aggregate.go`** — `Run(conn, Filter)` runs the six rollups. A shared `sessionConds()` builds the per-session WHERE fragment every query splices in; signal queries add the confidence floor. `FailingTools` is the one piece of cleverness: a failure signal points at the `tool_result` turn (no tool name), so it joins to the `tool_use` turn at `turn_idx-1`; a loop signal already points at a `tool_use` turn. Both feed one `UNION ALL` stream of `(tool, kind, session, user, team)` events that's tallied per tool. `Teams`/`Users` merge two simple GROUP BYs in Go rather than one clever query nobody can read in six months.
+
+**`prompt.go` + `synthesize.go`** — the optional `--advise` pass. Same Gemini wrapper as `advise` (`advise.NewClient`, `advise.Recommendation`), a cohort-scoped system prompt, and a `BuildSynthesisPrompt` that renders the Report into compact labeled text. The deterministic Report is the source of truth; the LLM just narrates it into fleet-wide CLAUDE.md rules. Empty cohort → no call, no spent token.
+
+The cobra wiring in `cmd/aggregate.go` stays thin: filter assembly, `Run`, optional `Synthesize`, then a `text/tabwriter` report or `--format json`.
+
+See `scripts/fleet-demo.sh` for a runnable end-to-end demo: it synthesizes five engineers across two teams, ingests them with attribution, and prints the rollup.
 
 ## Advisor (`internal/advise/`)
 
@@ -264,6 +297,10 @@ path = "~/.looptap/looptap.db"
 [sources]
 paths = ["~/extra-logs/"]
 
+[ingest]
+user = "alice"      # stamp parsed sessions with this user (--user overrides)
+team = "payments"   # ...and this team (--team overrides)
+
 [signals]
 stagnation_similarity  = 0.8
 stagnation_turn_factor = 2.0
@@ -312,6 +349,10 @@ internal/advise/context.go     # signal context queries
 internal/advise/prompt.go      # LLM prompt templates
 internal/advise/llm.go         # Gemini API wrapper
 internal/advise/types.go       # Recommendation, AdviceResult
+internal/aggregate/aggregate.go  # fleet rollups (SQL)
+internal/aggregate/types.go      # Filter, Report and its sections
+internal/aggregate/prompt.go     # fleet-advisor LLM prompt
+internal/aggregate/synthesize.go # optional LLM pass over a Report
 internal/analyze/analyze.go    # CLAUDE.md quality reviewer
 internal/analyze/reader.go     # file I/O + default path resolution
 internal/analyze/prompt.go     # quality-review prompt templates
