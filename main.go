@@ -28,6 +28,7 @@ func main() {
 		cmd.NewRunCmd(&dbPath),
 		cmd.NewInfoCmd(&dbPath),
 		cmd.NewQueryCmd(&dbPath),
+		cmd.NewPatternsCmd(&dbPath),
 		cmd.NewAdviseCmd(&dbPath),
 		cmd.NewAnalyzeCmd(),
 		cmd.NewHTMLCmd(),

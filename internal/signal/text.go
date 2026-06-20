@@ -1,8 +1,59 @@
 package signal
 
 import (
+	"regexp"
 	"strings"
 	"unicode"
+)
+
+// errorFamily maps a recognizable token in a chunk of command output to a
+// stable class label. Ordered most-specific first: "module not found" must win
+// over the generic "not found", and an errno and its English message collapse
+// to the same family (ENOENT == "no such file or directory") so they cluster
+// together. Substring match on the lowercased text.
+var errorFamilies = []struct {
+	needle string
+	class  string
+}{
+	{"no such file or directory", "ENOENT"},
+	{"enoent", "ENOENT"},
+	{"not a directory", "ENOTDIR"},
+	{"enotdir", "ENOTDIR"},
+	{"permission denied", "EACCES"},
+	{"eacces", "EACCES"},
+	{"connection refused", "ECONNREFUSED"},
+	{"econnrefused", "ECONNREFUSED"},
+	{"cannot find module", "module-not-found"},
+	{"module not found", "module-not-found"},
+	{"modulenotfounderror", "module-not-found"},
+	{"command not found", "command-not-found"},
+	{"context deadline exceeded", "timeout"},
+	{"etimedout", "timeout"},
+	{"timed out", "timeout"},
+	{"timeout", "timeout"},
+	{"too many requests", "rate-limit"},
+	{"rate limit", "rate-limit"},
+	{"429", "rate-limit"},
+	{"out of memory", "oom"},
+	{"cannot allocate memory", "oom"},
+	{"signal: killed", "oom"},
+	{"no space left", "no-space"},
+	{"segmentation fault", "segfault"},
+	{"sigsegv", "segfault"},
+	{"traceback (most recent call last)", "python-traceback"},
+	{"panic:", "panic"},
+	{"exit code", "exit-code"},
+	{"exit status", "exit-code"},
+	{"exited with", "exit-code"},
+	{"command failed", "command-failed"},
+}
+
+var (
+	reUUID      = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
+	reHex       = regexp.MustCompile(`0x[0-9a-f]+|\b[0-9a-f]{12,}\b`)
+	rePath      = regexp.MustCompile(`(?:[A-Za-z]:)?(?:/[\w.\-]+){2,}/?`)
+	reNum       = regexp.MustCompile(`\d+`)
+	reWhitespce = regexp.MustCompile(`\s+`)
 )
 
 // Normalize lowercases, strips punctuation, and collapses whitespace.
@@ -21,6 +72,42 @@ func Normalize(s string) string {
 		}
 	}
 	return strings.TrimSpace(b.String())
+}
+
+// ErrorClass distills a chunk of messy command output or signal evidence down
+// to a stable error family — the key `looptap patterns` clusters on so that the
+// same failure in fifty sessions counts as one shape, not fifty.
+//
+// First it looks for a recognizable error token (ENOENT, "connection refused",
+// an exit-code). Failing that it scrubs the volatile bits — paths, uuids, hex,
+// digits — to placeholders and keeps the first few words as a generic family,
+// so "/Users/x/api/foo.ts" and "/home/y/api/bar.ts" land in the same bucket.
+// Empty or unrecognizable input returns "" (unclassified).
+func ErrorClass(s string) string {
+	lower := strings.ToLower(s)
+	for _, f := range errorFamilies {
+		if strings.Contains(lower, f.needle) {
+			return f.class
+		}
+	}
+
+	// No known token — fall back to a scrubbed prefix so structurally-identical
+	// errors still cluster. Order matters: uuid before hex before digits.
+	scrubbed := lower
+	scrubbed = reUUID.ReplaceAllString(scrubbed, "<uuid>")
+	scrubbed = reHex.ReplaceAllString(scrubbed, "<hex>")
+	scrubbed = rePath.ReplaceAllString(scrubbed, "<path>")
+	scrubbed = reNum.ReplaceAllString(scrubbed, "<n>")
+	scrubbed = strings.TrimSpace(reWhitespce.ReplaceAllString(scrubbed, " "))
+	if scrubbed == "" {
+		return ""
+	}
+
+	words := strings.Fields(scrubbed)
+	if len(words) > 8 {
+		words = words[:8]
+	}
+	return strings.Join(words, " ")
 }
 
 // TokenSimilarity computes Jaccard similarity on whitespace-split tokens.

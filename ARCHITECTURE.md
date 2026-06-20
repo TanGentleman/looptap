@@ -32,6 +32,18 @@ type Detector interface {
 
 Also a package-level slice (`All`). `RunAll(session)` fans out to every detector. No network calls, no LLM calls — pure functions over turns.
 
+## The pipeline: signal → pattern → rule
+
+Everything downstream of parsing is one three-rung ladder, each rung a wider lens on the same transcripts:
+
+| Rung | Scope | Determinism | Lives in |
+|------|-------|-------------|----------|
+| **Signal** | one turn / one session | pure | `internal/signal` |
+| **Pattern** | a failure shape recurring *across* sessions | pure | `internal/patterns` |
+| **Rule** | the remediation, with evidence | template-first; LLM optional | `internal/rule` |
+
+`run`/`signal` populate the bottom rung. `patterns` clusters signals into the middle rung. `rule` synthesizes the top rung — a ready-to-paste AGENTS.md / CLAUDE.md line — deterministically from a cluster, with the LLM (`advise`) as optional polish on the wording. The top rung is also the wire format looptap shares with [tracers](https://github.com/TanGentleman/tracers): `tracers.rule/v1`.
+
 ## Core types
 
 ```go
@@ -171,6 +183,38 @@ The `query` command is the read side of the pipeline: "which transcripts hit sig
 
 Empty match exits 0 — silent is a valid answer. Bad format strings exit 1.
 
+## Patterns (`internal/patterns/` + `cmd/patterns.go`)
+
+`query` finds *which sessions* hit a signal. `patterns` is the rung up: it finds *what keeps going wrong across all of them*, with zero LLM calls.
+
+```
+signals ⋈ turns ⋈ sessions → Find() (SQL + Go grouping) → []Cluster → rule.Card
+```
+
+The clustering key is **(signal_type, tool_name, error_class)**. The error class comes from `signal.ErrorClass` (in `text.go`, next to the other text utilities), which distills messy output down to a stable family: known tokens collapse errno and message together (`ENOENT` == "no such file or directory"), and anything unrecognized is scrubbed of paths/uuids/hex/digits so structural siblings still cluster. No schema change — `turns` already carries `tool_name`/`content`/`is_error`, `signals` carries `evidence`.
+
+`Find(conn, Options)` returns `[]Cluster` sorted by distinct-session count descending (most pervasive first). Each `Cluster` projects onto a `rule.Pattern` and synthesizes a `rule.Card`. The **gate** (`--min-sessions`, default 5) is a publishing decision the *command* makes, not the engine — `Find` reports everything; `cmd/patterns.go` decides what becomes a card.
+
+**Output** — `--format text` (default) lists every cluster human-first, marking the ones below the gate; `--format json` emits a `tracers.rule/v1` bundle of only the clusters that cleared the gate (or all of them with `--include-below-gate`). Empty `cards[]` is a valid bundle.
+
+## Rule record (`internal/rule/` — `tracers.rule/v1`)
+
+The shared record that unifies what used to be three near-identical shapes (`advise.Recommendation`, `analyze.Finding`, and the `query` output): a **Pattern** (the failure shape), its **Evidence** (redacted example turns), and the **Rule** worth pasting somewhere. It is the contract tracers parses at its share boundary, specced in the tracers repo at `docs/rule-with-evidence.md`. The JSON tags here *are* the contract; `types_test.go` round-trips the spec's golden example so a careless rename fails at `go test`.
+
+```
+Bundle { schema, generated_at, cards[] }
+  Card { id, pattern, evidence[], rule, signature }
+    Pattern  { signal, tool, error_class, summary, session_count, example_session_ids[] }
+    Evidence { session_id, turn_idx, tool_name, is_error, excerpt, redactions }
+    Rule     { title, snippet, rationale, target, confidence, source }
+```
+
+**`synth.go`** — `Synthesize(pattern, examples)` builds a `Card` deterministically: a per-(signal, error-class) template supplies the rule wording, a generic fallback guarantees every gated cluster still yields a usable card, and `confidence` is set by session count (≥10 high, ≥5 medium, else low). `source` is `"template"` here; the LLM path may later refine the wording and stamp `"llm"`.
+
+**`redact.go`** — a deliberately small pre-pass that caps excerpts (~600 chars, keeping head and tail) and scrubs the obvious secrets (provider keys, `Authorization: Bearer …`, `NAME=secret` assignments) before they ride along as evidence. It is **precise over exhaustive** and explicitly **not** authoritative: tracers re-redacts every excerpt at its share boundary. Do not grow this into a redaction engine.
+
+> **Not yet on the record:** `advise` and `analyze` still emit their own shapes. Migrating them to emit a `tracers.rule/v1` `Bundle` (with `source: "llm"`) is the planned follow-up that makes the whole lifecycle speak one record; the deterministic `patterns` path lands first because it's the spine.
+
 ## Advisor (`internal/advise/`)
 
 The `advise` command closes the loop: signals go in, CLAUDE.md rules come out.
@@ -305,8 +349,12 @@ internal/parser/claude_code.go # Claude Code JSONL parser
 internal/parser/codex.go       # Codex parser (stub)
 internal/signal/types.go       # Signal struct
 internal/signal/detector.go    # Detector interface, RunAll()
-internal/signal/text.go        # shared text utilities
+internal/signal/text.go        # shared text utilities (incl. ErrorClass)
 internal/signal/*.go           # one file per signal detector
+internal/patterns/patterns.go  # cross-session clustering (Find → []Cluster)
+internal/rule/types.go         # tracers.rule/v1 record (Bundle, Card, …)
+internal/rule/synth.go         # deterministic cluster → Card synthesis
+internal/rule/redact.go        # evidence excerpt cap + secret pre-redactor
 internal/advise/advise.go      # advisor orchestrator
 internal/advise/context.go     # signal context queries
 internal/advise/prompt.go      # LLM prompt templates
