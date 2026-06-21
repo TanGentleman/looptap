@@ -1,0 +1,68 @@
+# Tag a semver release from origin/main. The v* tag push triggers release.yml.
+#
+# Prefer this over a local ./scripts/cut-release.sh run — it always starts from
+# the remote branch, leaves an audit trail, and is gated by the protected
+# "release" environment. Keep cut-release.sh for dry-runs / emergencies.
+name: Cut release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver to cut (e.g. 0.5.0 or v0.5.0-rc1)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cut-release
+  cancel-in-progress: false
+
+jobs:
+  cut:
+    name: Cut ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: "1.24.x"
+
+      - name: Changelog since previous tag
+        run: |
+          set -euo pipefail
+          prev=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          {
+            echo "## Changelog"
+            if [[ -n "$prev" ]]; then
+              echo "Commits since \`$prev\`:"
+              echo '```'
+              git log "${prev}..HEAD" --pretty=format:'- %s (%h)'
+              echo
+              echo '```'
+            else
+              echo "No prior \`v*\` tag — listing full history:"
+              echo '```'
+              git log --pretty=format:'- %s (%h)'
+              echo
+              echo '```'
+            fi
+          } | tee "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure git author
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Cut release
+        env:
+          LOOPTAP_REMOTE: origin
+          VERSION: ${{ inputs.version }}
+        run: ./scripts/cut-release.sh "$VERSION"
