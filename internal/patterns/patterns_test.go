@@ -1,19 +1,17 @@
 package patterns
 
 import (
-	"fmt"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"looptap/internal/db"
-	"looptap/internal/parser"
-	"looptap/internal/signal"
 )
 
-// seedPatterns builds a db with two failure shapes: an ENOENT cluster across 6
-// sessions (above a gate of 5) and a connection-refused cluster across 2 (below
-// it), each session carrying one erroring Bash turn the failure signal points at.
+// seedPatterns builds a db with the canonical two-cluster fixture: an ENOENT
+// cluster across 6 sessions (above a gate of 5) and a connection-refused cluster
+// across 2 (below it). It shares SeedContractFixture with the
+// `looptap seed-contract-fixture` subcommand so the engine tests and any live
+// capture of the binary's output assert against the exact same shape.
 func seedPatterns(t *testing.T) *db.DB {
 	t.Helper()
 	d, err := db.Open(filepath.Join(t.TempDir(), "p.db"))
@@ -22,36 +20,8 @@ func seedPatterns(t *testing.T) *db.DB {
 	}
 	t.Cleanup(func() { d.Close() })
 
-	base := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
-	add := func(id string, when time.Time, tool, content string) {
-		s := parser.Session{
-			ID: id, Source: "claude-code", Project: "/repo/app",
-			SessionID: id, StartedAt: when, EndedAt: when.Add(time.Hour),
-			RawPath: "/tmp/" + id + ".jsonl", FileHash: "h-" + id,
-			Turns: []parser.Turn{
-				{Idx: 0, Role: "user", Content: "do it"},
-				{Idx: 1, Role: "tool_use", ToolName: tool, Content: "{}"},
-				{Idx: 2, Role: "tool_result", ToolName: tool, IsError: true, Content: content},
-			},
-		}
-		if err := d.InsertSession(s); err != nil {
-			t.Fatalf("insert %s: %v", id, err)
-		}
-		turn := 2
-		if err := d.InsertSignals(id, []signal.Signal{
-			{SessionID: id, Type: "failure", Category: "execution", Confidence: 0.9, Evidence: "exit 1", TurnIdx: &turn},
-		}); err != nil {
-			t.Fatalf("signals %s: %v", id, err)
-		}
-	}
-
-	for i := 0; i < 6; i++ {
-		add(fmt.Sprintf("enoent-%d", i), base.Add(time.Duration(i)*time.Hour),
-			"Bash", "bash: cd: packages/api: No such file or directory")
-	}
-	for i := 0; i < 2; i++ {
-		add(fmt.Sprintf("conn-%d", i), base.Add(time.Duration(10+i)*time.Hour),
-			"Bash", "dial tcp 127.0.0.1:5432: connection refused")
+	if err := SeedContractFixture(d, false); err != nil {
+		t.Fatalf("seed: %v", err)
 	}
 	return d
 }

@@ -215,6 +215,8 @@ Bundle { schema, generated_at, gate_min_sessions, cards[] }
 
 **`redact.go`** — a deliberately small pre-pass that caps excerpts (~600 chars, keeping head and tail) and scrubs the obvious secrets (provider keys, `Authorization: Bearer …`, `NAME=secret` assignments) before they ride along as evidence. It is **precise over exhaustive** and explicitly **not** authoritative: tracers re-redacts every excerpt at its share boundary. Do not grow this into a redaction engine.
 
+**`seed.go` + `cmd/seed-contract-fixture`** — `patterns.SeedContractFixture(db, leaky)` plants the deterministic two-cluster fixture (6 ENOENT sessions over the gate, 2 connection-refused under it) that `internal/patterns`' own tests assert against. The `seed-contract-fixture` subcommand wraps it so a consumer (tracers) can build the binary, seed a throwaway DB, and capture `patterns --format json` as the *live* counterpart to the vendored golden — instead of reimplementing the seed in a foreign module that can't import looptap's internals. `--leaky` hangs one extra erroring turn (carrying a fake API key) on the newest ENOENT session: the cluster still counts 6, but the card's evidence now drags a secret through the redaction pre-pass, so the capture exercises scrubbing against real engine output. The seed helper is the single source of truth for the shape, so the live capture and the table tests can't drift on counts.
+
 > **Hybrid path:** tracers consumes `patterns --format json` (`source: "template"`) and sends redacted evidence to Modal for LLM polish (`source: "llm"`). See [docs/hybrid-architecture.md](docs/hybrid-architecture.md). The in-process `advise` / `analyze` commands still emit their own shapes until migrated or retired.
 
 ## Advisor (`internal/advise/`)
@@ -354,6 +356,7 @@ internal/signal/detector.go    # Detector interface, RunAll()
 internal/signal/text.go        # shared text utilities (incl. ErrorClass)
 internal/signal/*.go           # one file per signal detector
 internal/patterns/patterns.go  # cross-session clustering (Find → []Cluster)
+internal/patterns/seed.go      # shared contract fixture (SeedContractFixture)
 internal/rule/types.go         # tracers.rule/v1 record (Bundle, Card, …)
 internal/rule/synth.go         # deterministic cluster → Card synthesis
 internal/rule/redact.go        # evidence excerpt cap + secret pre-redactor
