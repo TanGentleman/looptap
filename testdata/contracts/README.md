@@ -7,7 +7,7 @@ looptap owns these files. tracers copies them into `test/fixtures/looptap/` and 
 | File | Purpose |
 |------|---------|
 | `tracers.rule.v1.golden-card.json` | Canonical card — matches tracers `rule-with-evidence.md` |
-| `tracers.rule.v1.golden-bundle.json` | Full bundle envelope (`schema`, `generated_at`, `cards[]`) |
+| `tracers.rule.v1.golden-bundle.json` | Full bundle envelope (`schema`, `generated_at`, `gate_min_sessions`, `cards[]`) |
 | `tracers.rule.v1.empty-bundle.json` | Valid zero-card bundle — `cards: []`, never `null` |
 | `tracers.rule.v1.leaky-bundle.json` | Card with fake API key in excerpt — redaction CI |
 | `tracers.analyze.v1.request.golden.json` | Cloud analyze payload (no `session_id` in evidence) |

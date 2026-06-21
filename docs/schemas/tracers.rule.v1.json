@@ -4,7 +4,7 @@
   "title": "tracers.rule/v1 Bundle",
   "description": "Versioned batch of pattern + evidence + rule cards. Shared record between looptap, tracers, and Modal.",
   "type": "object",
-  "required": ["schema", "generated_at", "cards"],
+  "required": ["schema", "generated_at", "gate_min_sessions", "cards"],
   "additionalProperties": false,
   "properties": {
     "schema": {
@@ -14,6 +14,11 @@
       "type": "string",
       "format": "date-time",
       "description": "RFC3339 UTC timestamp when the bundle was built"
+    },
+    "gate_min_sessions": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Session-count gate used when building this bundle (--min-sessions); tracers uses this at ingest"
     },
     "cards": {
       "type": "array",

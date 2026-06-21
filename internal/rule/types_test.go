@@ -77,9 +77,12 @@ func TestNewBundle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	b := NewBundle([]Card{c})
+	b := NewBundle([]Card{c}, 5)
 	if b.Schema != Schema {
 		t.Errorf("schema = %q, want %q", b.Schema, Schema)
+	}
+	if b.GateMinSessions != 5 {
+		t.Errorf("gate_min_sessions = %d, want 5", b.GateMinSessions)
 	}
 	if _, err := time.Parse(time.RFC3339, b.GeneratedAt); err != nil {
 		t.Errorf("generated_at %q not RFC3339: %v", b.GeneratedAt, err)
@@ -92,7 +95,7 @@ func TestNewBundle(t *testing.T) {
 func TestMarshalBundle_NilCardsIsEmptyArray(t *testing.T) {
 	// A bundle with nothing in it must serialize "cards": [] — never null —
 	// so consumers don't have to special-case it.
-	out, err := MarshalBundle(nil)
+	out, err := MarshalBundle(nil, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,5 +110,19 @@ func TestMarshalBundle_NilCardsIsEmptyArray(t *testing.T) {
 	}
 	if len(*b.Cards) != 0 {
 		t.Errorf("cards = %d, want 0", len(*b.Cards))
+	}
+}
+
+func TestMarshalBundle_GateMinSessions(t *testing.T) {
+	out, err := MarshalBundle(nil, 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var b Bundle
+	if err := json.Unmarshal(out, &b); err != nil {
+		t.Fatal(err)
+	}
+	if b.GateMinSessions != 3 {
+		t.Errorf("gate_min_sessions = %d, want 3", b.GateMinSessions)
 	}
 }

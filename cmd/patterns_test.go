@@ -59,23 +59,23 @@ func seedDB(t *testing.T) string {
 	return path
 }
 
-func runPatterns(t *testing.T, dbPath string, args ...string) string {
+func runPatterns(t *testing.T, dbPath string, args ...string) (stdout, stderr string) {
 	t.Helper()
 	dbp := dbPath
 	cmd := NewPatternsCmd(&dbp)
-	var buf bytes.Buffer
-	cmd.SetOut(&buf)
-	cmd.SetErr(&buf)
+	var out, errBuf bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&errBuf)
 	cmd.SetArgs(args)
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("execute %v: %v", args, err)
 	}
-	return buf.String()
+	return out.String(), errBuf.String()
 }
 
 func TestPatternsCmd_JSONGate(t *testing.T) {
 	path := seedDB(t)
-	out := runPatterns(t, path, "--format", "json")
+	out, _ := runPatterns(t, path, "--format", "json")
 
 	var bundle rule.Bundle
 	if err := json.Unmarshal([]byte(out), &bundle); err != nil {
@@ -83,6 +83,9 @@ func TestPatternsCmd_JSONGate(t *testing.T) {
 	}
 	if bundle.Schema != rule.Schema {
 		t.Errorf("schema = %q, want %q", bundle.Schema, rule.Schema)
+	}
+	if bundle.GateMinSessions != 5 {
+		t.Errorf("gate_min_sessions = %d, want 5", bundle.GateMinSessions)
 	}
 	// Only the 6-session ENOENT cluster clears the default gate of 5.
 	if len(bundle.Cards) != 1 {
@@ -98,7 +101,7 @@ func TestPatternsCmd_JSONGate(t *testing.T) {
 
 func TestPatternsCmd_IncludeBelowGate(t *testing.T) {
 	path := seedDB(t)
-	out := runPatterns(t, path, "--format", "json", "--include-below-gate")
+	out, stderr := runPatterns(t, path, "--format", "json", "--include-below-gate")
 
 	var bundle rule.Bundle
 	if err := json.Unmarshal([]byte(out), &bundle); err != nil {
@@ -107,11 +110,34 @@ func TestPatternsCmd_IncludeBelowGate(t *testing.T) {
 	if len(bundle.Cards) != 2 {
 		t.Errorf("got %d cards, want 2 with --include-below-gate", len(bundle.Cards))
 	}
+	wantWarn := "WARN: emitting sub-gate clusters; tracers will skip these on ingest unless session_count >= gate_min_sessions"
+	if !strings.Contains(stderr, wantWarn) {
+		t.Errorf("stderr missing warning:\n%s", stderr)
+	}
+	if strings.Contains(out, "WARN:") {
+		t.Errorf("warning leaked to stdout:\n%s", out)
+	}
 }
 
 func TestPatternsCmd_LowerGateLetsBothThrough(t *testing.T) {
 	path := seedDB(t)
-	out := runPatterns(t, path, "--format", "json", "--min-sessions", "2")
+	out, _ := runPatterns(t, path, "--format", "json", "--min-sessions", "3")
+
+	var bundle rule.Bundle
+	if err := json.Unmarshal([]byte(out), &bundle); err != nil {
+		t.Fatal(err)
+	}
+	if bundle.GateMinSessions != 3 {
+		t.Errorf("gate_min_sessions = %d, want 3", bundle.GateMinSessions)
+	}
+	if len(bundle.Cards) != 1 {
+		t.Errorf("got %d cards, want 1 at --min-sessions 3 (only 6-session cluster clears)", len(bundle.Cards))
+	}
+}
+
+func TestPatternsCmd_LowerGateTwoSessions(t *testing.T) {
+	path := seedDB(t)
+	out, _ := runPatterns(t, path, "--format", "json", "--min-sessions", "2")
 
 	var bundle rule.Bundle
 	if err := json.Unmarshal([]byte(out), &bundle); err != nil {
@@ -124,7 +150,7 @@ func TestPatternsCmd_LowerGateLetsBothThrough(t *testing.T) {
 
 func TestPatternsCmd_TextShowsBothWithGateMark(t *testing.T) {
 	path := seedDB(t)
-	out := runPatterns(t, path) // text is the default
+	out, _ := runPatterns(t, path) // text is the default
 
 	if !strings.Contains(out, "ENOENT") || !strings.Contains(out, "ECONNREFUSED") {
 		t.Errorf("text output should list both clusters:\n%s", out)
@@ -141,7 +167,7 @@ func TestPatternsCmd_TextShowsBothWithGateMark(t *testing.T) {
 // parser breaks. generated_at and scalar values are intentionally ignored.
 func TestPatternsCmd_MatchesGoldenBundleShape(t *testing.T) {
 	path := seedDB(t)
-	out := runPatterns(t, path, "--format", "json")
+	out, _ := runPatterns(t, path, "--format", "json")
 
 	raw, err := os.ReadFile(filepath.Join("..", "testdata", "contracts", "tracers.rule.v1.golden-bundle.json"))
 	if err != nil {

@@ -46,7 +46,7 @@ Examples:
   looptap patterns                                  # failures, human-readable
   looptap patterns --signal failure --signal loop   # widen the net
   looptap patterns --format json --min-sessions 3   # the bundle tracers parses
-  looptap patterns --format json --include-below-gate`,
+  looptap patterns --format json --include-below-gate  # engine-debug: stderr warns; tracers skips sub-gate cards`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load()
 			if err != nil {
@@ -85,6 +85,10 @@ Examples:
 			out := cmd.OutOrStdout()
 			switch format {
 			case "json":
+				if includeBelow {
+					_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
+						"WARN: emitting sub-gate clusters; tracers will skip these on ingest unless session_count >= gate_min_sessions")
+				}
 				return writeBundle(out, clusters, minSessions, includeBelow)
 			case "text", "":
 				return writeClustersText(out, clusters, minSessions)
@@ -100,7 +104,7 @@ Examples:
 	cmd.Flags().IntVar(&minSessions, "min-sessions", 5, "a pattern needs this many distinct sessions to become a card")
 	cmd.Flags().IntVar(&limit, "limit", 0, "max patterns to return (0 = no limit)")
 	cmd.Flags().StringVar(&format, "format", "text", "output format: text | json")
-	cmd.Flags().BoolVar(&includeBelow, "include-below-gate", false, "in json, include patterns below --min-sessions too")
+	cmd.Flags().BoolVar(&includeBelow, "include-below-gate", false, "engine-debug: in json, include patterns below --min-sessions (stderr warns; tracers skips sub-gate cards on ingest)")
 
 	return cmd
 }
@@ -116,7 +120,7 @@ func writeBundle(w io.Writer, clusters []patterns.Cluster, gate int, includeBelo
 		}
 		cards = append(cards, c.Card())
 	}
-	b, err := rule.MarshalBundle(cards)
+	b, err := rule.MarshalBundle(cards, gate)
 	if err != nil {
 		return err
 	}

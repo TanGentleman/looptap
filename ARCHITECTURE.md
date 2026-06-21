@@ -197,14 +197,14 @@ The clustering key is **(signal_type, tool_name, error_class)**. The error class
 
 `Find(conn, Options)` returns `[]Cluster` sorted by distinct-session count descending (most pervasive first). Each `Cluster` projects onto a `rule.Pattern` and synthesizes a `rule.Card`. The **gate** (`--min-sessions`, default 5) is a publishing decision the *command* makes, not the engine — `Find` reports everything; `cmd/patterns.go` decides what becomes a card.
 
-**Output** — `--format text` (default) lists every cluster human-first, marking the ones below the gate; `--format json` emits a `tracers.rule/v1` bundle of only the clusters that cleared the gate (or all of them with `--include-below-gate`). Empty `cards[]` is a valid bundle.
+**Output** — `--format text` (default) lists every cluster human-first, marking the ones below the gate; `--format json` emits a `tracers.rule/v1` bundle of only the clusters that cleared the gate (or all of them with `--include-below-gate`, which writes an engine-debug warning to stderr — tracers skips sub-gate cards on ingest). The bundle declares `gate_min_sessions` from `--min-sessions` so the consumer cannot drift from the producer. Empty `cards[]` is a valid bundle.
 
 ## Rule record (`internal/rule/` — `tracers.rule/v1`)
 
 The shared record that unifies what used to be three near-identical shapes (`advise.Recommendation`, `analyze.Finding`, and the `query` output): a **Pattern** (the failure shape), its **Evidence** (redacted example turns), and the **Rule** worth pasting somewhere. It is the contract tracers parses at its share boundary, specced in the tracers repo at `docs/rule-with-evidence.md`. The JSON tags here *are* the contract; `types_test.go` round-trips the spec's golden example so a careless rename fails at `go test`.
 
 ```
-Bundle { schema, generated_at, cards[] }
+Bundle { schema, generated_at, gate_min_sessions, cards[] }
   Card { id, pattern, evidence[], rule, signature }
     Pattern  { signal, tool, error_class, summary, session_count, example_session_ids[] }
     Evidence { session_id, turn_idx, tool_name, is_error, excerpt, redactions }
