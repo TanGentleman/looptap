@@ -130,6 +130,7 @@ jobs:
           GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
           LOOPTAP_AGENT: opencode
           LOOPTAP_OPENCODE_CONFIG: ${{ runner.temp }}/looptap/opencode.json
+          BRANCH: ${{ inputs.branch || github.ref_name }}
         run: |
           if [ -z "${GOOGLE_GENERATIVE_AI_API_KEY}" ]; then
             echo "::error::GOOGLE_GENERATIVE_AI_API_KEY secret is not set. Add it under Settings → Secrets and variables → Actions." >&2
@@ -137,7 +138,7 @@ jobs:
           fi
           ./looptap html \
             --repo . \
-            --branch "${{ inputs.branch || github.ref_name }}" \
+            --branch "$BRANCH" \
             --output branch-report.html \
             --is-sandbox \
             --force

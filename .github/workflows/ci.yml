@@ -61,6 +61,9 @@ jobs:
       - name: shfmt
         run: shfmt -d scripts/*.sh
 
+      - name: ci-guardrails
+        run: ./scripts/ci-guardrails.sh
+
   test:
     name: Build & test
     runs-on: ubuntu-latest

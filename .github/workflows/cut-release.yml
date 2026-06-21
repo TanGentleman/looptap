@@ -30,6 +30,8 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
+          # This job pushes the release tag, so it needs the token on disk.
+          persist-credentials: true
 
       - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
