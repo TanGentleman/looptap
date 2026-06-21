@@ -2,6 +2,9 @@
 # Tag a semver release and push — GitHub Actions picks up v* tags and ships binaries + SHA256SUMS.
 # Prereqs: clean tree (unless --dirty), tests green (unless --skip-tests), tag must not exist yet.
 #
+# Prefer the "Cut release" GitHub Actions workflow (Settings → Actions → Cut release) for
+# audited, reviewer-gated cuts from origin/main. This script is for dry-runs and emergencies.
+#
 # Usage:
 #   ./scripts/cut-release.sh 0.5.0
 #   ./scripts/cut-release.sh v0.5.0
