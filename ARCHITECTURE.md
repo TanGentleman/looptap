@@ -1,6 +1,6 @@
 # Architecture
 
-> **Cross-system contract:** How looptap hands off to tracers (UI, redaction, signing) and Modal (LLM polish) lives in [docs/hybrid-architecture.md](docs/hybrid-architecture.md), with JSON Schema stubs under [docs/schemas/](docs/schemas/).
+> **Cross-system contract:** How looptap hands off to tracers (UI, redaction, signing) and Modal (LLM polish) lives in [docs/hybrid-architecture.md](docs/hybrid-architecture.md), with JSON Schema stubs under [docs/schemas/](docs/schemas/). User stories mapped to those contracts: [docs/user-stories.md](docs/user-stories.md).
 
 ## Two interfaces, that's it
 

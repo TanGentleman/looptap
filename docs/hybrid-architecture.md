@@ -1,8 +1,10 @@
 # Hybrid Architecture: looptap + tracers + Modal
 
-Cross-system contract for the pipeline that moves a transcript from a raw JSONL file to a signed, shareable insight. looptap stays the **deterministic engine**; tracers is the **trusted edge** (UI, redaction, workflow, signing); Modal is the **stateless LLM polish** layer.
+Cross-system contract for the pipeline that moves a transcript from a raw JSONL file to a signed, shareable insight. looptap stays the **deterministic engine** (silent engine room — data extraction); tracers is the **trusted edge** (secure edge and UX — state machine, redaction, signing, UI); Modal is the **stateless LLM polish** layer (stateless brain — synthesis on redacted evidence only).
 
 For looptap-only internals (parsers, detectors, SQLite schema), see [ARCHITECTURE.md](../ARCHITECTURE.md).
+
+For user-facing flows (install → UI → analyze → share) mapped to these contracts, see [user-stories.md](user-stories.md).
 
 ## Roles
 
@@ -56,7 +58,13 @@ looptap patterns --format json --db /path/to/looptap.db [--min-sessions N]
 
 ### Security: subprocess invocation
 
-tracers invokes looptap with a **fixed argv slice** (`execve` style). No shell (`/bin/sh -c`). Paths come from tracers config (`~/.tracers/config.toml`), never from unvalidated UI input. Reject paths containing `\0`, newlines, or `..` escapes before exec.
+tracers invokes looptap with **`std.process.Child` and an exact argument slice** — no shell (`/bin/sh -c`). Example:
+
+```zig
+&[_][]const u8{ "looptap", "patterns", "--format", "json", "--db", db_path }
+```
+
+Paths come from tracers config (`~/.tracers/config.toml`), never from unvalidated UI input. Reject paths containing `\0`, newlines, or `..` escapes before exec. Branch names, file paths, and project names from looptap can contain shell metacharacters; parameterized execution eliminates local command injection.
 
 ### DB ownership
 
@@ -128,16 +136,18 @@ Do not split writes across two owners without explicit locking.
 1. Parse JSON; reject if `schema != "tracers.rule/v1"`.
 2. Validate against [tracers.rule.v1.json](schemas/tracers.rule.v1.json).
 3. Re-redact every `evidence[].excerpt` with the authoritative Zig redactor; update `redactions`.
-4. Upsert into SQLite: new cards → `detected`; do not overwrite `addressed` / `ignored` on rescan unless user opts in.
+4. **Write scrubbed bytes only** — persist `card_json` to SQLite *after* step 3. The local `findings` database must never hold raw secrets (accidental `findings.db` leak or UI XSS should have zero blast radius). Raw secrets exist only in source `.jsonl` files.
+5. Upsert into SQLite: new cards → `detected`; do not overwrite `addressed` / `ignored` on rescan unless user opts in.
 
 ### Redaction layers
 
 | Stage | Who | Purpose |
 |-------|-----|---------|
 | Pre-pass | looptap (`internal/rule/redact.go`) | Safe local pipes (`patterns \| jq`) |
-| Authoritative | tracers (`redact.zig`) | Before SQLite cloud fields, HTTP, and signing |
+| Authoritative (ingest) | tracers (`redact.zig`) | **Before `findings.card_json` is written** |
+| Authoritative (egress) | tracers (`redact.zig`) | Immediately before HTTP and signing |
 
-tracers is the source of truth. looptap's pre-pass is best-effort sync; missed secrets are caught downstream.
+tracers is the source of truth. looptap's pre-pass is best-effort; missed secrets must be caught at ingest, not deferred to share time.
 
 ---
 
@@ -189,6 +199,7 @@ detected ──[Rescan, not addressed/ignored]──► updated in place
 
 - tracers runs authoritative redaction on every excerpt **before** HTTP.
 - Modal never receives raw turn content, full session IDs, or filesystem paths unless explicitly allowlisted in the request schema.
+- **Evidence cap:** tracers sends at most **5** redacted evidence turns per analyze request (`redacted_evidence.maxItems` in schema), even if looptap attached more or a cluster spans huge sessions. Bounds Modal payload size and protects against accidental DoS.
 - Modal holds LLM API keys; tracers holds transcripts. Keys never enter looptap's subprocess environment.
 
 ### Request — `POST /v1/analyze`
@@ -271,7 +282,7 @@ Modal validates with Pydantic/Instructor. Reject responses where evidence bytes 
 
 ### Security boundary
 
-Sign **canonical JSON** of the card (JCS / RFC 8785, or a documented stable key order shared with the share server). Re-redact immediately before signing.
+Sign **canonical JSON** of the card plus **`expires_at`** (RFC3339 UTC) using JCS (RFC 8785). Re-redact immediately before signing. Embed expiry in the signed payload — not only in the hosted viewer TTL — so a copy-pasted artifact into Slack or a PR comment still fails verification once cryptographically expired.
 
 ### Request — `POST /v1/inbox`
 
@@ -290,13 +301,14 @@ Schema: [schemas/tracers.share.v1.request.json](schemas/tracers.share.v1.request
   "attestation": {
     "signer_public_key": "ed25519-hex",
     "algorithm": "ed25519",
-    "payload_hash": "sha256-hex-of-canonical-card-bytes",
+    "expires_at": "2026-06-27T12:00:00Z",
+    "payload_hash": "sha256-hex-of-canonical-{card,expires_at}-bytes",
     "signature": "base64"
   }
 }
 ```
 
-Share server: canonicalize → SHA-256 → ed25519 verify → store. Private key never leaves the device.
+Share server: canonicalize `{ card, expires_at }` → SHA-256 → ed25519 verify → reject if `now > expires_at` → store. Private key never leaves the device.
 
 ---
 
@@ -339,7 +351,7 @@ Share server: canonicalize → SHA-256 → ed25519 verify → store. Private key
 
 1. **Single SQLite file** — tracers-owned with looptap `--db`, or looptap-owned with tracers read-only?
 2. **Target file default** — looptap templates default to `AGENTS.md`; UI "Save" must respect `rule.target`.
-3. **Canonical JSON for signing** — adopt JCS (RFC 8785) with shared test vectors between tracers and share server.
+3. **Canonical JSON for signing** — adopt JCS (RFC 8785) with shared test vectors between tracers and share server. Sign bytes cover `{ card, expires_at }`.
 4. **API versioning** — `tracers.analyze/v1` and `tracers.share/v1` are separate from `tracers.rule/v1` so HTTP envelopes can evolve without breaking the card record.
 
 ---
@@ -353,3 +365,6 @@ Share server: canonicalize → SHA-256 → ed25519 verify → store. Private key
 | `internal/rule/redact.go` | Pre-pass redactor (non-authoritative) |
 | `cmd/patterns.go` | `--format json` bundle emitter |
 | `deploy/app.py` | Modal hosting (evolve toward `/v1/analyze`) |
+| `docs/hybrid-architecture.md` | Cross-system contracts and phase plan |
+| `docs/user-stories.md` | User stories → technical contracts + security checklist |
+| `docs/tracers-scaffold.md` | Phase 1 implementation handoff for tracers agents |

@@ -40,6 +40,8 @@
     "redacted_evidence": {
       "type": "array",
       "minItems": 1,
+      "maxItems": 5,
+      "description": "Hard cap enforced tracers-side before HTTP. Protects Modal from oversized payloads and pathological clusters.",
       "items": {
         "type": "object",
         "required": ["tool_name", "is_error", "excerpt", "redactions"],

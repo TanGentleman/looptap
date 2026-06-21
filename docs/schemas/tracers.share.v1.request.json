@@ -18,6 +18,7 @@
       "required": [
         "signer_public_key",
         "algorithm",
+        "expires_at",
         "payload_hash",
         "signature"
       ],
@@ -30,9 +31,14 @@
         "algorithm": {
           "const": "ed25519"
         },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "RFC3339 UTC. Included in canonical sign bytes so verification works outside the hosted viewer TTL."
+        },
         "payload_hash": {
           "type": "string",
-          "description": "SHA-256 hex of canonical card JSON bytes"
+          "description": "SHA-256 hex of JCS-canonical bytes of { card (signature empty), expires_at }"
         },
         "signature": {
           "type": "string",
