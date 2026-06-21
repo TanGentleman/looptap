@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -130,6 +131,79 @@ func TestPatternsCmd_TextShowsBothWithGateMark(t *testing.T) {
 	}
 	if !strings.Contains(out, "below gate") {
 		t.Errorf("the 2-session cluster should be marked below gate:\n%s", out)
+	}
+}
+
+// TestPatternsCmd_MatchesGoldenBundleShape drives the real command and checks
+// its JSON envelope against the golden bundle fixture key-for-key. The values
+// differ (seeded sessions, live timestamp) but the *shape* is the contract: if
+// the command sprouts or drops a field relative to testdata/contracts, tracers'
+// parser breaks. generated_at and scalar values are intentionally ignored.
+func TestPatternsCmd_MatchesGoldenBundleShape(t *testing.T) {
+	path := seedDB(t)
+	out := runPatterns(t, path, "--format", "json")
+
+	raw, err := os.ReadFile(filepath.Join("..", "testdata", "contracts", "tracers.rule.v1.golden-bundle.json"))
+	if err != nil {
+		t.Fatalf("read golden bundle: %v", err)
+	}
+
+	var golden, got map[string]any
+	if err := json.Unmarshal(raw, &golden); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("command output isn't valid json: %v\n%s", err, out)
+	}
+
+	if !sameJSONShape(golden, got) {
+		t.Errorf("patterns json drifted from golden bundle shape:\n golden: %s\n   got: %s", raw, out)
+	}
+}
+
+// sameJSONShape compares two decoded-JSON values by structure only: objects
+// must share a key set (recursively), arrays must share an element shape;
+// scalar values are ignored. (A sibling of internal/rule's sameShape, kept here
+// because cmd can't import a test from another package.)
+func sameJSONShape(a, b any) bool {
+	switch av := a.(type) {
+	case map[string]any:
+		bv, ok := b.(map[string]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for k, va := range av {
+			vb, ok := bv[k]
+			if !ok || !sameJSONShape(va, vb) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		bv, ok := b.([]any)
+		if !ok {
+			return false
+		}
+		if len(av) == 0 || len(bv) == 0 {
+			return true
+		}
+		for _, e := range av {
+			if !sameJSONShape(e, bv[0]) {
+				return false
+			}
+		}
+		for _, e := range bv {
+			if !sameJSONShape(e, av[0]) {
+				return false
+			}
+		}
+		return true
+	default:
+		switch b.(type) {
+		case map[string]any, []any:
+			return false
+		}
+		return true
 	}
 }
 

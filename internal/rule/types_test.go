@@ -2,49 +2,33 @@ package rule
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
 )
 
-// goldenCard is the exact Card from the tracers spec (docs/rule-with-evidence.md).
-// If this stops round-tripping, looptap and tracers have drifted apart — the
-// whole point of the shared record is gone. Treat a failure here as a contract
-// break, not a test to "fix".
-const goldenCard = `{
-  "id": "failure-bash-enoent",
-  "pattern": {
-    "signal": "failure",
-    "tool": "Bash",
-    "error_class": "ENOENT",
-    "summary": "Bash commands fail with \"No such file or directory\" on paths the agent assumed existed",
-    "session_count": 7,
-    "example_session_ids": ["9ffb1c2d", "4d308a4c", "c8e2f10a"]
-  },
-  "evidence": [
-    {
-      "session_id": "9ffb1c2d",
-      "turn_idx": 42,
-      "tool_name": "Bash",
-      "is_error": true,
-      "excerpt": "cd packages/api && npm test\nbash: cd: packages/api: No such file or directory",
-      "redactions": 0
-    }
-  ],
-  "rule": {
-    "title": "Verify a path exists before cd-ing into it",
-    "snippet": "Before ` + "`cd <dir>`" + ` or running a command in a subdir, confirm the directory exists (e.g. ` + "`ls <dir>`" + `); don't assume a path from memory.",
-    "rationale": "Bash steps repeatedly fail with ENOENT on directories the agent assumed were present, costing a retry loop.",
-    "target": "AGENTS.md",
-    "confidence": "medium",
-    "source": "template"
-  },
-  "signature": ""
-}`
+// goldenCard is the exact Card from the tracers spec, read from the shared
+// fixture so there is a single source of truth: testdata/contracts/ is what
+// tracers copies, so it's what we pin against here too. If this stops
+// round-tripping, looptap and tracers have drifted apart — the whole point of
+// the shared record is gone. Treat a failure here as a contract break, not a
+// test to "fix".
+func goldenCard(t *testing.T) []byte {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(contractsDir, "tracers.rule.v1.golden-card.json"))
+	if err != nil {
+		t.Fatalf("read golden card: %v", err)
+	}
+	return b
+}
 
 func TestCard_GoldenRoundTrip(t *testing.T) {
+	golden := goldenCard(t)
+
 	var c Card
-	if err := json.Unmarshal([]byte(goldenCard), &c); err != nil {
+	if err := json.Unmarshal(golden, &c); err != nil {
 		t.Fatalf("unmarshal golden: %v", err)
 	}
 
@@ -76,7 +60,7 @@ func TestCard_GoldenRoundTrip(t *testing.T) {
 		t.Fatalf("marshal: %v", err)
 	}
 	var want, got map[string]any
-	if err := json.Unmarshal([]byte(goldenCard), &want); err != nil {
+	if err := json.Unmarshal(golden, &want); err != nil {
 		t.Fatal(err)
 	}
 	if err := json.Unmarshal(out, &got); err != nil {
@@ -89,7 +73,7 @@ func TestCard_GoldenRoundTrip(t *testing.T) {
 
 func TestNewBundle(t *testing.T) {
 	var c Card
-	if err := json.Unmarshal([]byte(goldenCard), &c); err != nil {
+	if err := json.Unmarshal(goldenCard(t), &c); err != nil {
 		t.Fatal(err)
 	}
 
