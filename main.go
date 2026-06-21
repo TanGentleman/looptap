@@ -29,6 +29,7 @@ func main() {
 		cmd.NewInfoCmd(&dbPath),
 		cmd.NewQueryCmd(&dbPath),
 		cmd.NewPatternsCmd(&dbPath),
+		cmd.NewSeedContractFixtureCmd(&dbPath),
 		cmd.NewAdviseCmd(&dbPath),
 		cmd.NewAnalyzeCmd(),
 		cmd.NewHTMLCmd(),
