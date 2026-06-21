@@ -16,6 +16,10 @@ permissions:
 
 env:
   GO_VERSION: "1.24.x"
+  # Expanded once here so run: blocks reference $REF_NAME / $REPO as shell vars
+  # rather than letting Actions splice a tag name straight into the script.
+  REF_NAME: ${{ github.ref_name }}
+  REPO: ${{ github.repository }}
 
 jobs:
   darwin:
@@ -33,13 +37,13 @@ jobs:
           GOOS: darwin
           GOARCH: amd64
           CGO_ENABLED: "1"
-        run: go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o looptap-darwin-amd64 .
+        run: go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${REF_NAME}" -o looptap-darwin-amd64 .
       - name: arm64
         env:
           GOOS: darwin
           GOARCH: arm64
           CGO_ENABLED: "1"
-        run: go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o looptap-darwin-arm64 .
+        run: go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${REF_NAME}" -o looptap-darwin-arm64 .
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bin-darwin-amd64
@@ -60,7 +64,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
-      - run: CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o looptap-linux-amd64 .
+      - run: CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${REF_NAME}" -o looptap-linux-amd64 .
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bin-linux-amd64
@@ -77,7 +81,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
-      - run: CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o looptap-linux-arm64 .
+      - run: CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${REF_NAME}" -o looptap-linux-arm64 .
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bin-linux-arm64
@@ -91,9 +95,9 @@ jobs:
         with:
           persist-credentials: false
       - run: |
-          docker run --rm -v "${PWD}:/src" -w /src golang:1.24-alpine sh -ec '
+          docker run --rm -e REF_NAME -v "${PWD}:/src" -w /src golang:1.24-alpine sh -ec '
             apk add --no-cache build-base sqlite-dev git
-            CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o looptap-linux-amd64-musl .
+            CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${REF_NAME}" -o looptap-linux-amd64-musl .
           '
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -108,9 +112,9 @@ jobs:
         with:
           persist-credentials: false
       - run: |
-          docker run --rm -v "${PWD}:/src" -w /src golang:1.24-alpine sh -ec '
+          docker run --rm -e REF_NAME -v "${PWD}:/src" -w /src golang:1.24-alpine sh -ec '
             apk add --no-cache build-base sqlite-dev git
-            CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o looptap-linux-arm64-musl .
+            CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${REF_NAME}" -o looptap-linux-arm64-musl .
           '
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -142,9 +146,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${{ github.ref_name }}"
-          gh release create "$TAG" \
-            --repo "${{ github.repository }}" \
-            --title "$TAG" \
-            --notes "Install: \`curl -fsSL https://raw.githubusercontent.com/${{ github.repository }}/main/scripts/install.sh | bash\`" \
+          gh release create "$REF_NAME" \
+            --repo "$REPO" \
+            --title "$REF_NAME" \
+            --notes "Install: \`curl -fsSL https://raw.githubusercontent.com/${REPO}/main/scripts/install.sh | bash\`" \
             release/*

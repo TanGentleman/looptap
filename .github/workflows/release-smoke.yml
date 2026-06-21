@@ -42,11 +42,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          ASSET: ${{ matrix.asset }}
         run: |
           gh release download "$RELEASE_TAG" \
-            --pattern "${{ matrix.asset }}" --dir .
-          chmod +x "${{ matrix.asset }}"
-          mv "${{ matrix.asset }}" looptap
+            --pattern "$ASSET" --dir .
+          chmod +x "$ASSET"
+          mv "$ASSET" looptap
 
       - name: "Smoke: binary boots and SQLite works"
         if: matrix.smoke == 'native'
