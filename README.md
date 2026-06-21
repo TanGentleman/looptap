@@ -38,6 +38,7 @@ looptap patterns --format json    # a tracers.rule/v1 bundle for downstream tool
 ## More
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — signals, schema, prompts, every knob.
+- [docs/hybrid-architecture.md](docs/hybrid-architecture.md) — looptap + tracers + Modal contracts and phase plan.
 - [`deploy/`](deploy) — host `looptap analyze` and the repo-analysis API on Modal.
 - [`scripts/`](scripts) — install, uninstall, deploy, cut a release.
 - [`.github/workflows/html-report.yml`](.github/workflows/html-report.yml) — branch reports from CI via opencode.

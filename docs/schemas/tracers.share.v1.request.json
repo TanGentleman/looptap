@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://looptap.dev/schemas/tracers.share.v1.request.json",
+  "title": "tracers.share/v1 Request",
+  "description": "Signed card payload sent from tracers to the share inbox server.",
+  "type": "object",
+  "required": ["api_version", "card", "attestation"],
+  "additionalProperties": false,
+  "properties": {
+    "api_version": {
+      "const": "tracers.share/v1"
+    },
+    "card": {
+      "$ref": "tracers.rule.v1.json#/$defs/card"
+    },
+    "attestation": {
+      "type": "object",
+      "required": [
+        "signer_public_key",
+        "algorithm",
+        "payload_hash",
+        "signature"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "signer_public_key": {
+          "type": "string",
+          "description": "Hex-encoded ed25519 public key"
+        },
+        "algorithm": {
+          "const": "ed25519"
+        },
+        "payload_hash": {
+          "type": "string",
+          "description": "SHA-256 hex of canonical card JSON bytes"
+        },
+        "signature": {
+          "type": "string",
+          "description": "Base64-encoded ed25519 signature over payload_hash"
+        }
+      }
+    }
+  }
+}

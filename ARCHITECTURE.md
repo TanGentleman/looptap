@@ -1,5 +1,7 @@
 # Architecture
 
+> **Cross-system contract:** How looptap hands off to tracers (UI, redaction, signing) and Modal (LLM polish) lives in [docs/hybrid-architecture.md](docs/hybrid-architecture.md), with JSON Schema stubs under [docs/schemas/](docs/schemas/).
+
 ## Two interfaces, that's it
 
 Everything interesting in looptap flows through two interfaces. Each new agent format or signal type is one file implementing one interface. No plugin system, no reflection, no service locators.
@@ -213,7 +215,7 @@ Bundle { schema, generated_at, cards[] }
 
 **`redact.go`** — a deliberately small pre-pass that caps excerpts (~600 chars, keeping head and tail) and scrubs the obvious secrets (provider keys, `Authorization: Bearer …`, `NAME=secret` assignments) before they ride along as evidence. It is **precise over exhaustive** and explicitly **not** authoritative: tracers re-redacts every excerpt at its share boundary. Do not grow this into a redaction engine.
 
-> **Not yet on the record:** `advise` and `analyze` still emit their own shapes. Migrating them to emit a `tracers.rule/v1` `Bundle` (with `source: "llm"`) is the planned follow-up that makes the whole lifecycle speak one record; the deterministic `patterns` path lands first because it's the spine.
+> **Hybrid path:** tracers consumes `patterns --format json` (`source: "template"`) and sends redacted evidence to Modal for LLM polish (`source: "llm"`). See [docs/hybrid-architecture.md](docs/hybrid-architecture.md). The in-process `advise` / `analyze` commands still emit their own shapes until migrated or retired.
 
 ## Advisor (`internal/advise/`)
 
