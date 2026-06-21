@@ -17,9 +17,6 @@ on:
         description: Branch to report on
         default: main
         required: true
-  # TEMPORARY: smoke-test from branch before merging to main. Revert this block.
-  push:
-    branches: [claude/looptap-html-opencode-UzCBi]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
