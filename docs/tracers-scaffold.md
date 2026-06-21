@@ -17,7 +17,7 @@
 | Repo | Owns |
 |------|------|
 | **looptap** | Parse JSONL → SQLite → signals → patterns → bundle JSON on stdout |
-| **tracers** | Subprocess orchestration, ingest, `findings` state machine, redaction, UI, signing, share mint |
+| **tracers** | Subprocess orchestration, ingest, `insights` state machine, redaction, UI, signing, share mint |
 | **Modal** (looptap `deploy/`) | `POST /v1/analyze` — LLM polish on redacted evidence only |
 
 tracers does **not** reimplement clustering in Phase 1. Shell out to looptap.
@@ -26,7 +26,7 @@ tracers does **not** reimplement clustering in Phase 1. Shell out to looptap.
 
 ## Phase 1 exit criteria
 
-One failure pattern flows **detect → analyze → display** with no raw secrets in Modal logs or `findings.db`.
+One failure pattern flows **detect → analyze → display** with no raw secrets in Modal logs or `insights.db`.
 
 ---
 
@@ -58,14 +58,14 @@ Per card:
 1. Reject if `schema != "tracers.rule/v1"`
 2. **`redact.zig` every `evidence[].excerpt`** — update `redactions` count
 3. Serialize scrubbed card → `card_json`
-4. Upsert `findings` where `id = card.id`, state `detected` (skip `addressed` / `ignored` on rescan)
+4. Upsert `insights` where `id = card.id`, state `detected` (skip `addressed` / `ignored` on rescan)
 
-### 3. Workflow SQLite (`~/.tracers/findings.db` or alongside identity)
+### 3. Workflow SQLite (`~/.tracers/insights.db` or alongside identity)
 
 Schema from [hybrid-architecture.md § Contract 2](hybrid-architecture.md#contract-2-state-machine-tracers-sqlite):
 
 ```sql
-CREATE TABLE findings (
+CREATE TABLE insights (
     id              TEXT PRIMARY KEY,
     state           TEXT NOT NULL CHECK (state IN (
                         'detected', 'analyzing', 'proposed',
@@ -92,12 +92,12 @@ Add authenticated endpoints (bearer token, same as digest today):
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/api/findings` | List display DTOs; `?bucket=new\|ready\|done` |
-| `GET` | `/api/findings/:id` | Full scrubbed card |
-| `POST` | `/api/findings/:id/analyze` | → `analyzing`; call Modal; merge → `proposed` |
-| `POST` | `/api/findings/:id/address` | Append snippet; → `addressed` |
-| `POST` | `/api/findings/:id/dismiss` | → `ignored` |
-| `POST` | `/api/findings/:id/share` | Re-redact, JCS sign, mint link |
+| `GET` | `/api/insights` | List display DTOs; `?bucket=new\|ready\|done` |
+| `GET` | `/api/insights/:id` | Full scrubbed card |
+| `POST` | `/api/insights/:id/analyze` | → `analyzing`; call Modal; merge → `proposed` |
+| `POST` | `/api/insights/:id/address` | Append snippet; → `addressed` |
+| `POST` | `/api/insights/:id/dismiss` | → `ignored` |
+| `POST` | `/api/insights/:id/share` | Re-redact, JCS sign, mint link |
 | `POST` | `/api/rescan` | Run looptap chain + ingest |
 
 Existing transcript share stays: `POST /share/:id` → `/s/:token`.
@@ -116,7 +116,7 @@ On failure: `state = failed`, keep template card usable.
 
 ### 6. UI (`tracers-web`)
 
-New **Insights** panel (HTMX poll `/api/findings` or proxy via serve):
+New **Insights** panel (HTMX poll `/api/insights` or proxy via serve):
 
 - Row: title, session count, bucket badge, expand evidence
 - Actions: Analyze | Save | Share insight | Dismiss
@@ -135,15 +135,15 @@ bin = "looptap"  # or pinned path
 analyze_url = "https://…/v1/analyze"
 # API key stays in tracers env, never passed to looptap subprocess
 
-[findings]
-db = "~/.tracers/findings.db"
+[insights]
+db = "~/.tracers/insights.db"
 ```
 
 ---
 
 ## Security checklist (non-negotiable)
 
-- [ ] `redact.zig` before **any** `findings.card_json` write
+- [ ] `redact.zig` before **any** `insights.card_json` write
 - [ ] `std.process.Child` / fixed argv for all looptap calls — no shell
 - [ ] Analyze request: no `session_id`, ≤5 evidence turns
 - [ ] Share: JCS + Ed25519; `expires_at` in signed bytes ([share schema](schemas/tracers.share.v1.request.json))
@@ -167,7 +167,7 @@ Seed fixture: run `looptap patterns --format json` on looptap testdata or use go
 
 ## What looptap is *not* building in Phase 1
 
-- tracers UI, findings DB, file watcher
+- tracers UI, insights DB, file watcher
 - Modal `/v1/analyze` endpoint (evolve `deploy/app.py` separately)
 - Retiring Go binary (Phase 3)
 

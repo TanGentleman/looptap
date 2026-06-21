@@ -49,8 +49,8 @@ directories."
 | **Core daemon** | `tracers serve --addr 127.0.0.1:8787` — loopback-only, bearer auth |
 | **UI** | HTML + Zig (spider + HTMX), separate binary like tracers-web; polls core |
 | **Bootstrap scan** | Contract 0 in [hybrid-architecture.md](hybrid-architecture.md): fixed-argv looptap chain |
-| **Ingest** | Parse `tracers.rule/v1` Bundle → **redact.zig on every excerpt** → upsert `findings` as `detected` |
-| **UI read API** | `GET /api/findings?state=active` → display DTOs: `{ id, title, summary, session_count, state_label, confidence }` |
+| **Ingest** | Parse `tracers.rule/v1` Bundle → **redact.zig on every excerpt** → upsert `insights` as `detected` |
+| **UI read API** | `GET /api/insights?state=active` → display DTOs: `{ id, title, summary, session_count, state_label, confidence }` |
 
 ### Security: subprocess invocation
 
@@ -91,18 +91,18 @@ Each row: title, "seen in N sessions," confidence badge, expandable redacted evi
 
 | Layer | Contract |
 |-------|----------|
-| **Canonical record** | Full `tracers.rule/v1` Card in `findings.card_json` — see [schemas/tracers.rule.v1.json](schemas/tracers.rule.v1.json) |
-| **Workflow DB** | Contract 2 `findings` table in [hybrid-architecture.md](hybrid-architecture.md) |
+| **Canonical record** | Full `tracers.rule/v1` Card in `insights.card_json` — see [schemas/tracers.rule.v1.json](schemas/tracers.rule.v1.json) |
+| **Workflow DB** | Contract 2 `insights` table in [hybrid-architecture.md](hybrid-architecture.md) |
 | **Rescan merge** | Update `detected` in place; never overwrite `addressed` / `ignored` unless user opts in |
-| **List API** | `GET /api/findings?bucket=new\|ready\|done` — server maps internal states → buckets |
-| **Detail API** | `GET /api/findings/:id` → card (evidence already scrubbed at ingest) |
+| **List API** | `GET /api/insights?bucket=new\|ready\|done` — server maps internal states → buckets |
+| **Detail API** | `GET /api/insights/:id` → card (evidence already scrubbed at ingest) |
 
 ### Security: redaction before SQLite write
 
 **Apply `redact.zig` before persisting `card_json`.** Ingest is not "store raw, redact
-on share." The local `findings` database must contain only scrubbed excerpts so that:
+on share." The local `insights` database must contain only scrubbed excerpts so that:
 
-- Accidental leakage of `findings.db` exposes no secrets
+- Accidental leakage of `insights.db` exposes no secrets
 - A UI XSS bug cannot exfiltrate raw API keys from stored evidence
 
 looptap's pre-pass (`internal/rule/redact.go`) is defense in depth for local pipes;
@@ -129,7 +129,7 @@ title/snippet. On failure, template wording remains usable with "Retry?"
 
 | Step | Contract |
 |------|----------|
-| **UI action** | `POST /api/findings/:id/analyze` |
+| **UI action** | `POST /api/insights/:id/analyze` |
 | **State** | `detected \| failed` → `analyzing` → `proposed` |
 | **Pre-flight** | Re-redact excerpts; cap evidence (see below); build analyze request |
 | **Cloud request** | `POST /v1/analyze` — [schemas/tracers.analyze.v1.request.json](schemas/tracers.analyze.v1.request.json) |
@@ -163,7 +163,7 @@ subprocess environment.
 
 | Layer | Contract |
 |-------|----------|
-| **UI action** | `POST /api/findings/:id/address` — optional `{ "target": "AGENTS.md" }`; default from `card.rule.target` |
+| **UI action** | `POST /api/insights/:id/address` — optional `{ "target": "AGENTS.md" }`; default from `card.rule.target` |
 | **File write** | Append `card.rule.snippet` to resolved path |
 | **State** | `proposed` → `addressed`; set `addressed_at` |
 
@@ -208,7 +208,7 @@ redacted evidence, snippet, optional "Signed by @you" badge.
 
 | Layer | Contract |
 |-------|----------|
-| **UI action** | `POST /api/findings/:id/share` |
+| **UI action** | `POST /api/insights/:id/share` |
 | **Pre-share** | Re-redact excerpts; canonicalize (JCS RFC 8785); sign with Ed25519 (`identity.zig`) |
 | **Hosted share** | `POST /v1/inbox` — [schemas/tracers.share.v1.request.json](schemas/tracers.share.v1.request.json) |
 | **Local mint (Phase 1)** | Reuse share store pattern; body = signed envelope or canonical card JSON |
@@ -235,7 +235,7 @@ See attestation fields in the share schema.
 
 | Layer | Contract |
 |-------|----------|
-| **UI action** | `POST /api/findings/:id/dismiss` |
+| **UI action** | `POST /api/insights/:id/dismiss` |
 | **State** | `detected \| proposed` → `ignored` |
 | **Rescan** | Ingest skips `ignored` / `addressed` by stable `card.id` slug |
 
@@ -259,7 +259,7 @@ See attestation fields in the share schema.
 | **Incremental engine** | Fixed-argv: `looptap run` → `looptap signal` → `looptap patterns --format json` |
 | **Debounce** | Coalesce events; cap scan frequency |
 | **Ingest** | Same as Story 1 — redact before SQLite write |
-| **UI** | HTMX poll or SSE `findings_updated` |
+| **UI** | HTMX poll or SSE `insights_updated` |
 
 ---
 
@@ -306,7 +306,7 @@ Separate **Share session** on the flagged-sessions panel (Story 5).
    redact.zig (before SQLite write)
         │
         ▼
-   findings SQLite + state machine
+   insights SQLite + state machine
         │
    ┌────┴────────────────────────────┐
    │ HTML + Zig UI                    │
@@ -330,7 +330,7 @@ Separate **Share session** on the flagged-sessions panel (Story 5).
 
 Before implementation, treat these as non-negotiable:
 
-1. **Redaction at ingest** — `redact.zig` runs before `findings.card_json` is written.
+1. **Redaction at ingest** — `redact.zig` runs before `insights.card_json` is written.
    Raw secrets exist only in source `.jsonl` files.
 
 2. **Cloud evidence cap** — Max 5 turns in `redacted_evidence`; no `session_id` in

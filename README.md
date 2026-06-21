@@ -41,6 +41,7 @@ looptap patterns --format json    # a tracers.rule/v1 bundle for downstream tool
 - [docs/hybrid-architecture.md](docs/hybrid-architecture.md) — looptap + tracers + Modal contracts and phase plan.
 - [docs/user-stories.md](docs/user-stories.md) — install → UI → analyze → share, with security checklist.
 - [docs/tracers-scaffold.md](docs/tracers-scaffold.md) — Phase 1 build order for the tracers repo.
+- [docs/build-strategy.md](docs/build-strategy.md) — boundaries first, walking skeleton E2E plan.
 - [`deploy/`](deploy) — host `looptap analyze` and the repo-analysis API on Modal.
 - [`scripts/`](scripts) — install, uninstall, deploy, cut a release.
 - [`.github/workflows/html-report.yml`](.github/workflows/html-report.yml) — branch reports from CI via opencode.

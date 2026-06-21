@@ -4,7 +4,7 @@ Cross-system contract for the pipeline that moves a transcript from a raw JSONL 
 
 For looptap-only internals (parsers, detectors, SQLite schema), see [ARCHITECTURE.md](../ARCHITECTURE.md).
 
-For user-facing flows (install → UI → analyze → share) mapped to these contracts, see [user-stories.md](user-stories.md).
+For user-facing flows (install → UI → analyze → share) mapped to these contracts, see [user-stories.md](user-stories.md). For architect-vs-agent build order, see [build-strategy.md](build-strategy.md).
 
 ## Roles
 
@@ -136,7 +136,7 @@ Do not split writes across two owners without explicit locking.
 1. Parse JSON; reject if `schema != "tracers.rule/v1"`.
 2. Validate against [tracers.rule.v1.json](schemas/tracers.rule.v1.json).
 3. Re-redact every `evidence[].excerpt` with the authoritative Zig redactor; update `redactions`.
-4. **Write scrubbed bytes only** — persist `card_json` to SQLite *after* step 3. The local `findings` database must never hold raw secrets (accidental `findings.db` leak or UI XSS should have zero blast radius). Raw secrets exist only in source `.jsonl` files.
+4. **Write scrubbed bytes only** — persist `card_json` to SQLite *after* step 3. The local `insights` database must never hold raw secrets (accidental `insights.db` leak or UI XSS should have zero blast radius). Raw secrets exist only in source `.jsonl` files.
 5. Upsert into SQLite: new cards → `detected`; do not overwrite `addressed` / `ignored` on rescan unless user opts in.
 
 ### Redaction layers
@@ -144,7 +144,7 @@ Do not split writes across two owners without explicit locking.
 | Stage | Who | Purpose |
 |-------|-----|---------|
 | Pre-pass | looptap (`internal/rule/redact.go`) | Safe local pipes (`patterns \| jq`) |
-| Authoritative (ingest) | tracers (`redact.zig`) | **Before `findings.card_json` is written** |
+| Authoritative (ingest) | tracers (`redact.zig`) | **Before `insights.card_json` is written** |
 | Authoritative (egress) | tracers (`redact.zig`) | Immediately before HTTP and signing |
 
 tracers is the source of truth. looptap's pre-pass is best-effort; missed secrets must be caught at ingest, not deferred to share time.
@@ -156,7 +156,7 @@ tracers is the source of truth. looptap's pre-pass is best-effort; missed secret
 The product moat. Store the **whole card** as canonical JSON plus workflow metadata.
 
 ```sql
-CREATE TABLE findings (
+CREATE TABLE insights (
     id              TEXT PRIMARY KEY,     -- card.id from tracers.rule/v1
     state           TEXT NOT NULL CHECK (state IN (
                         'detected', 'analyzing', 'proposed',
@@ -172,8 +172,8 @@ CREATE TABLE findings (
     addressed_at    TEXT
 );
 
-CREATE INDEX findings_state_idx ON findings(state);
-CREATE INDEX findings_updated_idx ON findings(updated_at);
+CREATE INDEX insights_state_idx ON insights(state);
+CREATE INDEX insights_updated_idx ON insights(updated_at);
 ```
 
 ### State transitions
@@ -326,7 +326,7 @@ Share server: canonicalize `{ card, expires_at }` → SHA-256 → ed25519 verify
 
 ### Phase 2 — State machine moat
 
-**tracers:** SQLite `findings`, dismiss / analyze / save actions, SSE or HTMX for `analyzing → proposed`, idempotent rescans.
+**tracers:** SQLite `insights`, dismiss / analyze / save actions, SSE or HTMX for `analyzing → proposed`, idempotent rescans.
 
 **Modal:** Structured output enforcement, rate limits, `request_id` dedup.
 
@@ -349,7 +349,7 @@ Share server: canonicalize `{ card, expires_at }` → SHA-256 → ed25519 verify
 
 ## Open decisions
 
-1. **Single SQLite file** — tracers-owned with looptap `--db`, or looptap-owned with tracers read-only?
+1. ~~**Single SQLite file**~~ — **Resolved:** two files. `looptap.db` (engine, Go-only) + `insights.db` (workflow, Zig-only). Handoff is stdout JSON, not shared SQLite. See [build-strategy.md](build-strategy.md).
 2. **Target file default** — looptap templates default to `AGENTS.md`; UI "Save" must respect `rule.target`.
 3. **Canonical JSON for signing** — adopt JCS (RFC 8785) with shared test vectors between tracers and share server. Sign bytes cover `{ card, expires_at }`.
 4. **API versioning** — `tracers.analyze/v1` and `tracers.share/v1` are separate from `tracers.rule/v1` so HTTP envelopes can evolve without breaking the card record.
@@ -368,3 +368,4 @@ Share server: canonicalize `{ card, expires_at }` → SHA-256 → ed25519 verify
 | `docs/hybrid-architecture.md` | Cross-system contracts and phase plan |
 | `docs/user-stories.md` | User stories → technical contracts + security checklist |
 | `docs/tracers-scaffold.md` | Phase 1 implementation handoff for tracers agents |
+| `docs/build-strategy.md` | Boundaries vs delegation, two-DB model, walking skeleton |
