@@ -21,6 +21,10 @@ on:
   push:
     branches: [claude/looptap-html-opencode-UzCBi]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Minimum perms: the report is an artifact, not a push.
 permissions:
   contents: read
