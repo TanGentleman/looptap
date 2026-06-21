@@ -18,8 +18,8 @@ jobs:
     name: macOS (amd64 + arm64)
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: amd64
@@ -34,11 +34,11 @@ jobs:
           GOARCH: arm64
           CGO_ENABLED: "1"
         run: go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o looptap-darwin-arm64 .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bin-darwin-amd64
           path: looptap-darwin-amd64
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bin-darwin-arm64
           path: looptap-darwin-arm64
@@ -47,13 +47,13 @@ jobs:
     name: Linux glibc amd64
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
       - run: CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o looptap-linux-amd64 .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bin-linux-amd64
           path: looptap-linux-amd64
@@ -62,13 +62,13 @@ jobs:
     name: Linux glibc arm64
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: ${{ env.GO_VERSION }}
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
       - run: CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o looptap-linux-arm64 .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bin-linux-arm64
           path: looptap-linux-arm64
@@ -77,13 +77,13 @@ jobs:
     name: Linux musl amd64
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - run: |
           docker run --rm -v "${PWD}:/src" -w /src golang:1.24-alpine sh -ec '
             apk add --no-cache build-base sqlite-dev git
             CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o looptap-linux-amd64-musl .
           '
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bin-linux-amd64-musl
           path: looptap-linux-amd64-musl
@@ -92,13 +92,13 @@ jobs:
     name: Linux musl arm64
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - run: |
           docker run --rm -v "${PWD}:/src" -w /src golang:1.24-alpine sh -ec '
             apk add --no-cache build-base sqlite-dev git
             CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${{ github.ref_name }}" -o looptap-linux-arm64-musl .
           '
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: bin-linux-arm64-musl
           path: looptap-linux-arm64-musl
@@ -113,7 +113,7 @@ jobs:
       - linux-musl-arm64
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: artifacts
       - name: Flatten & checksum
