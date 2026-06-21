@@ -28,9 +28,10 @@ const Schema = "tracers.rule/v1"
 // An empty Cards slice is a valid bundle — "nothing crossed the gate" is an
 // answer, not an error.
 type Bundle struct {
-	Schema      string `json:"schema"`
-	GeneratedAt string `json:"generated_at"`
-	Cards       []Card `json:"cards"`
+	Schema          string `json:"schema"`
+	GeneratedAt     string `json:"generated_at"`
+	GateMinSessions int    `json:"gate_min_sessions"`
+	Cards           []Card `json:"cards"`
 }
 
 // Card is one pattern, its evidence, and the rule it argues for.
@@ -88,14 +89,15 @@ const (
 // NewBundle wraps cards in the envelope, stamping the current schema and a
 // UTC RFC3339 generation time. A nil cards slice becomes an empty (not null)
 // JSON array so consumers never have to special-case it.
-func NewBundle(cards []Card) Bundle {
+func NewBundle(cards []Card, gateMinSessions int) Bundle {
 	if cards == nil {
 		cards = []Card{}
 	}
 	return Bundle{
-		Schema:      Schema,
-		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
-		Cards:       cards,
+		Schema:          Schema,
+		GeneratedAt:     time.Now().UTC().Format(time.RFC3339),
+		GateMinSessions: gateMinSessions,
+		Cards:           cards,
 	}
 }
 
@@ -104,12 +106,12 @@ func NewBundle(cards []Card) Bundle {
 // HTML escaping is off so snippets keep their literal `<dir>` rather than
 // turning into <dir> — it's still valid JSON for tracers to parse.
 // No trailing newline; the caller decides how to terminate.
-func MarshalBundle(cards []Card) ([]byte, error) {
+func MarshalBundle(cards []Card, gateMinSessions int) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	enc.SetIndent("", "  ")
-	if err := enc.Encode(NewBundle(cards)); err != nil {
+	if err := enc.Encode(NewBundle(cards, gateMinSessions)); err != nil {
 		return nil, err
 	}
 	return bytes.TrimRight(buf.Bytes(), "\n"), nil

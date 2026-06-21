@@ -124,7 +124,11 @@ func TestGoldenBundleRoundTrip(t *testing.T) {
 		t.Fatalf("golden bundle has %d cards, want 1", len(in.Cards))
 	}
 
-	out, err := MarshalBundle(in.Cards)
+	if in.GateMinSessions != 5 {
+		t.Errorf("golden gate_min_sessions = %d, want 5", in.GateMinSessions)
+	}
+
+	out, err := MarshalBundle(in.Cards, in.GateMinSessions)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
 	}

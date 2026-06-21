@@ -87,6 +87,7 @@ Do not split writes across two owners without explicit locking.
 {
   "schema": "tracers.rule/v1",
   "generated_at": "2026-06-20T12:00:00Z",
+  "gate_min_sessions": 5,
   "cards": [
     {
       "id": "failure-bash-enoent",
