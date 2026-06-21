@@ -50,15 +50,16 @@ jobs:
           sudo apt-get install -y shellcheck
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
           go install mvdan.cc/sh/v3/cmd/shfmt@v3.10.0
+          echo "$(go env GOPATH)/bin" >>"$GITHUB_PATH"
 
       - name: actionlint
-        run: "$(go env GOPATH)/bin/actionlint"
+        run: actionlint
 
       - name: shellcheck
         run: shellcheck scripts/*.sh
 
       - name: shfmt
-        run: "$(go env GOPATH)/bin/shfmt" -d scripts/*.sh
+        run: shfmt -d scripts/*.sh
 
   test:
     name: Build & test
