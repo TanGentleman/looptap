@@ -34,15 +34,25 @@ while [[ $# -gt 0 ]]; do
 	case "$1" in
 	--env)
 		shift
-		[[ $# -gt 0 ]] || { echo "--env needs a path" >&2; exit 1; }
+		[[ $# -gt 0 ]] || {
+			echo "--env needs a path" >&2
+			exit 1
+		}
 		ENV_FILE="$1"
 		;;
 	--env=*) ENV_FILE="${1#*=}" ;;
 	--skip-build) SKIP_BUILD=true ;;
 	--no-smoke) NO_SMOKE=true ;;
 	--dry-run) DRY_RUN=true ;;
-	-h | --help) usage; exit 0 ;;
-	*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "Unknown option: $1" >&2
+		usage >&2
+		exit 1
+		;;
 	esac
 	shift
 done
