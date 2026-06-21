@@ -167,7 +167,8 @@ if [[ ! -f "$APP_PY" ]]; then
 fi
 
 # Pull APP_NAME / FUNCTION_NAME from deploy/app.py without executing it.
-parsed="$(python3 - "$APP_PY" <<'PY'
+parsed="$(
+	python3 - "$APP_PY" <<'PY'
 import ast, sys
 src = open(sys.argv[1]).read()
 tree = ast.parse(src)
