@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://looptap.dev/schemas/tracers.analyze.v1.response.json",
+  "title": "tracers.analyze/v1 Response",
+  "description": "Single enriched tracers.rule/v1 card returned by Modal.",
+  "type": "object",
+  "required": ["api_version", "request_id", "card"],
+  "additionalProperties": false,
+  "properties": {
+    "api_version": {
+      "const": "tracers.analyze/v1"
+    },
+    "request_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "card": {
+      "$ref": "tracers.rule.v1.json#/$defs/card"
+    }
+  }
+}

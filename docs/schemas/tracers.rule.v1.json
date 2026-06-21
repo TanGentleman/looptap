@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://looptap.dev/schemas/tracers.rule.v1.json",
+  "title": "tracers.rule/v1 Bundle",
+  "description": "Versioned batch of pattern + evidence + rule cards. Shared record between looptap, tracers, and Modal.",
+  "type": "object",
+  "required": ["schema", "generated_at", "cards"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "tracers.rule/v1"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC3339 UTC timestamp when the bundle was built"
+    },
+    "cards": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/card" }
+    }
+  },
+  "$defs": {
+    "card": {
+      "type": "object",
+      "required": ["id", "pattern", "evidence", "rule", "signature"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Stable slug, e.g. failure-bash-enoent"
+        },
+        "pattern": { "$ref": "#/$defs/pattern" },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        },
+        "rule": { "$ref": "#/$defs/rule" },
+        "signature": {
+          "type": "string",
+          "description": "Empty until tracers signs at share boundary"
+        }
+      }
+    },
+    "pattern": {
+      "type": "object",
+      "required": [
+        "signal",
+        "tool",
+        "error_class",
+        "summary",
+        "session_count",
+        "example_session_ids"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "signal": { "type": "string" },
+        "tool": { "type": "string" },
+        "error_class": { "type": "string" },
+        "summary": { "type": "string" },
+        "session_count": { "type": "integer", "minimum": 0 },
+        "example_session_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "session_id",
+        "turn_idx",
+        "tool_name",
+        "is_error",
+        "excerpt",
+        "redactions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "session_id": { "type": "string" },
+        "turn_idx": { "type": "integer", "minimum": 0 },
+        "tool_name": { "type": "string" },
+        "is_error": { "type": "boolean" },
+        "excerpt": { "type": "string" },
+        "redactions": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": [
+        "title",
+        "snippet",
+        "rationale",
+        "target",
+        "confidence",
+        "source"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "snippet": { "type": "string" },
+        "rationale": { "type": "string" },
+        "target": {
+          "type": "string",
+          "enum": ["AGENTS.md", "CLAUDE.md"]
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["high", "medium", "low"]
+        },
+        "source": {
+          "type": "string",
+          "enum": ["template", "llm"]
+        }
+      }
+    }
+  }
+}
