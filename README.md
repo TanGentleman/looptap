@@ -38,10 +38,12 @@ looptap patterns --format json    # a tracers.rule/v1 bundle for downstream tool
 ## More
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — signals, schema, prompts, every knob.
-- [docs/hybrid-architecture.md](docs/hybrid-architecture.md) — looptap + tracers + Modal contracts and phase plan.
-- [docs/user-stories.md](docs/user-stories.md) — install → UI → analyze → share, with security checklist.
-- [docs/tracers-scaffold.md](docs/tracers-scaffold.md) — Phase 1 build order for the tracers repo.
-- [docs/build-strategy.md](docs/build-strategy.md) — boundaries first, walking skeleton E2E plan.
+- [docs/pr-roadmap.md](docs/pr-roadmap.md) — **source of truth** for looptap + tracers Phase 1 (PR order, prompts, CI).
+- [docs/hybrid-architecture.md](docs/hybrid-architecture.md) — contracts 0–4, `insights` state machine.
+- [docs/build-strategy.md](docs/build-strategy.md) — boundaries first, two-DB model, walking skeleton.
+- [docs/tracers-scaffold.md](docs/tracers-scaffold.md) — tracers file-level map (routes, config).
+- [docs/user-stories.md](docs/user-stories.md) — install → UI → analyze → share.
+- [testdata/contracts/](testdata/contracts/) — golden JSON fixtures for cross-repo CI.
 - [`deploy/`](deploy) — host `looptap analyze` and the repo-analysis API on Modal.
 - [`scripts/`](scripts) — install, uninstall, deploy, cut a release.
 - [`.github/workflows/html-report.yml`](.github/workflows/html-report.yml) — branch reports from CI via opencode.

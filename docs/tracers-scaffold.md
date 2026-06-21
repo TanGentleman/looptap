@@ -1,14 +1,17 @@
 # tracers Phase 1 scaffold — implementation handoff
 
-**Audience:** agents and humans building in the [tracers](https://github.com/TanGentleman/tracers) repo.
+**Audience:** agents building in the [tracers](https://github.com/TanGentleman/tracers) repo.
+
+**Source of truth (both repos):** [pr-roadmap.md](pr-roadmap.md) on looptap PR #25 — PR order, prompts, CI gates, fixture sync.
 
 **Read first (in order):**
 
-1. [user-stories.md](user-stories.md) — what users see vs what stays opaque
-2. [hybrid-architecture.md](hybrid-architecture.md) — contracts 0–4 and phase plan
-3. [schemas/](schemas/) — JSON Schema stubs (`tracers.rule/v1`, analyze, share)
+1. [pr-roadmap.md](pr-roadmap.md) — which PR to build, acceptance criteria, copy-paste prompt
+2. [user-stories.md](user-stories.md) — what users see vs what stays opaque
+3. [hybrid-architecture.md](hybrid-architecture.md) — contracts 0–4
+4. [schemas/](schemas/) + [testdata/contracts/](../testdata/contracts/) — copy fixtures into `test/fixtures/looptap/`
 
-**looptap side (done):** `looptap patterns --format json` emits `tracers.rule/v1` bundles. Golden test in `internal/rule/types_test.go` pins the wire format to tracers' [rule-with-evidence.md](https://github.com/TanGentleman/tracers/blob/main/docs/rule-with-evidence.md).
+**looptap side (shipped):** `looptap patterns --format json` → `tracers.rule/v1`. Golden card in [testdata/contracts/tracers.rule.v1.golden-card.json](../testdata/contracts/tracers.rule.v1.golden-card.json). Parser: tracers `tracers-web/src/rules.zig`.
 
 ---
 
@@ -17,7 +20,7 @@
 | Repo | Owns |
 |------|------|
 | **looptap** | Parse JSONL → SQLite → signals → patterns → bundle JSON on stdout |
-| **tracers** | Subprocess orchestration, ingest, `insights` state machine, redaction, UI, signing, share mint |
+| **tracers** | Subprocess orchestration, ingest, `insights` state machine, redaction, UI, signing |
 | **Modal** (looptap `deploy/`) | `POST /v1/analyze` — LLM polish on redacted evidence only |
 
 tracers does **not** reimplement clustering in Phase 1. Shell out to looptap.
@@ -26,18 +29,25 @@ tracers does **not** reimplement clustering in Phase 1. Shell out to looptap.
 
 ## Phase 1 exit criteria
 
-One failure pattern flows **detect → analyze → display** with no raw secrets in Modal logs or `insights.db`.
+One failure pattern flows **detect → analyze → display** with no raw secrets in Modal logs or `insights.db`. Checklist: [pr-roadmap.md § Phase 1 exit criteria](pr-roadmap.md#phase-1-exit-criteria).
 
 ---
 
-## Build order (suggested)
+## Build order → PR map
 
-### 1. Subprocess wrapper (`tracers/src/looptap.zig` or extend `root.zig`)
+| PR | This doc section | Notes |
+|----|------------------|-------|
+| 0b | §2 parse only | Copy fixtures; no DB yet |
+| 1 | §3 workflow SQLite, §4 API, §6 UI | Mock ingest; redact optional for fake data |
+| 2 | §2 ingest redact | **Blocks subprocess** |
+| 3 | §1 subprocess | `run → signal → patterns` |
+| 5 | §5 analyze, §4 `POST …/analyze` | Mock Modal OK until looptap PR 4 |
+
+### 1. Subprocess wrapper (`tracers/src/looptap.zig` or extend `root.zig`) — **PR 3**
 
 Fixed-argv chain — **never shell**:
 
 ```zig
-// After config resolves db_path:
 try runLooptapPhase(init, &.{ "looptap", "run", "--db", db_path });
 try runLooptapPhase(init, &.{ "looptap", "signal", "--db", db_path });
 const bundle_json = try runLooptapCapture(init, &.{
@@ -46,21 +56,22 @@ const bundle_json = try runLooptapCapture(init, &.{
 ```
 
 - Paths from `~/.tracers/config.toml` only; reject `\0`, newlines, `..`
-- Mirror existing `invokeLooptap` in `root.zig` but add `signal` + `patterns`
-- Today: `runLooptap` does `run → info → query` — **replace/extend** for patterns workflow
+- Replace today's `run → info → query` path with the patterns workflow
 
-### 2. Bundle ingest (`tracers-web/src/rules.zig` already parses)
+### 2. Bundle ingest — **PR 1 + PR 2**
 
-Reuse `parseBundle` / `isSupported` from tracers-web or move parser to `tracers/src/` for core ingest.
+Reuse `parseBundle` / `isSupported` from `tracers-web/src/rules.zig` (or move to `tracers/src/`).
 
 Per card:
 
 1. Reject if `schema != "tracers.rule/v1"`
-2. **`redact.zig` every `evidence[].excerpt`** — update `redactions` count
+2. **`redact.zig` every `evidence[].excerpt`** — update `redactions` count (**PR 2**)
 3. Serialize scrubbed card → `card_json`
 4. Upsert `insights` where `id = card.id`, state `detected` (skip `addressed` / `ignored` on rescan)
 
-### 3. Workflow SQLite (`~/.tracers/insights.db` or alongside identity)
+Fixture: [leaky-bundle.json](../testdata/contracts/tracers.rule.v1.leaky-bundle.json) for redaction CI.
+
+### 3. Workflow SQLite — **PR 1**
 
 Schema from [hybrid-architecture.md § Contract 2](hybrid-architecture.md#contract-2-state-machine-tracers-sqlite):
 
@@ -84,56 +95,39 @@ CREATE TABLE insights (
 
 **Separate from looptap.db** — engine data vs workflow state.
 
-Map internal states → user buckets (see [user-stories.md § Story 2](user-stories.md#story-2--see-insights-and-pipeline-stage)).
-
 ### 4. Loopback API (`tracers serve`)
-
-Add authenticated endpoints (bearer token, same as digest today):
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/api/insights` | List display DTOs; `?bucket=new\|ready\|done` |
+| `GET` | `/api/insights` | List DTOs; `?bucket=new\|ready\|done` |
 | `GET` | `/api/insights/:id` | Full scrubbed card |
-| `POST` | `/api/insights/:id/analyze` | → `analyzing`; call Modal; merge → `proposed` |
+| `POST` | `/api/insights/:id/analyze` | → `analyzing`; Modal; → `proposed` |
 | `POST` | `/api/insights/:id/address` | Append snippet; → `addressed` |
 | `POST` | `/api/insights/:id/dismiss` | → `ignored` |
 | `POST` | `/api/insights/:id/share` | Re-redact, JCS sign, mint link |
-| `POST` | `/api/rescan` | Run looptap chain + ingest |
+| `POST` | `/api/rescan` | looptap chain + ingest |
 
-Existing transcript share stays: `POST /share/:id` → `/s/:token`.
+Bearer auth on mutating routes (same as digest today).
 
-### 5. Analyze client (Modal)
+### 5. Analyze client (Modal) — **PR 5**
 
-Build request per [schemas/tracers.analyze.v1.request.json](schemas/tracers.analyze.v1.request.json):
+Request: [tracers.analyze.v1.request.golden.json](../testdata/contracts/tracers.analyze.v1.request.golden.json). Strip `session_id`, max 5 evidence, include `template_rule`.
 
-- Strip `session_id` from evidence
-- **Max 5** evidence items (`maxItems` in schema)
-- Include `template_rule` from card
+Merge per [hybrid-architecture.md § Merge rules](hybrid-architecture.md#merge-rules-tracers-side). On failure: `state = failed`.
 
-Merge response per [hybrid-architecture.md § Merge rules](hybrid-architecture.md#merge-rules-tracers-side): keep local evidence; replace `rule` if `source == "llm"`.
+### 6. UI (`tracers-web`) — **PR 1, 5**
 
-On failure: `state = failed`, keep template card usable.
-
-### 6. UI (`tracers-web`)
-
-New **Insights** panel (HTMX poll `/api/insights` or proxy via serve):
-
-- Row: title, session count, bucket badge, expand evidence
-- Actions: Analyze | Save | Share insight | Dismiss
-- `analyzing` → spinner until state changes
-
-Keep flagged-sessions panel for **Share session** (transcript path).
+Insights panel: HTMX poll `/api/insights`. Actions: Analyze | Save | Share | Dismiss.
 
 ### 7. Config (`~/.tracers/config.toml`)
 
 ```toml
 [looptap]
 db = "~/.looptap/looptap.db"
-bin = "looptap"  # or pinned path
+bin = "looptap"
 
 [modal]
 analyze_url = "https://…/v1/analyze"
-# API key stays in tracers env, never passed to looptap subprocess
 
 [insights]
 db = "~/.tracers/insights.db"
@@ -141,45 +135,35 @@ db = "~/.tracers/insights.db"
 
 ---
 
-## Security checklist (non-negotiable)
+## Security checklist
 
-- [ ] `redact.zig` before **any** `insights.card_json` write
-- [ ] `std.process.Child` / fixed argv for all looptap calls — no shell
-- [ ] Analyze request: no `session_id`, ≤5 evidence turns
-- [ ] Share: JCS + Ed25519; `expires_at` in signed bytes ([share schema](schemas/tracers.share.v1.request.json))
+- [ ] `redact.zig` before **any** `insights.card_json` write (PR 2)
+- [ ] Fixed argv for looptap — no shell (PR 3)
+- [ ] Analyze: no `session_id`, ≤5 evidence (PR 5)
+- [ ] Share: JCS + Ed25519; `expires_at` in signed bytes (Phase 2+)
 - [ ] Loopback-only serve; bearer auth on mutating routes
 
 ---
 
-## Tests to add (tracers)
+## Tests → CI matrix
 
-| Test | What |
-|------|------|
-| `rules.zig` | Already covers bundle parse — keep green against looptap golden |
-| Ingest + redact | Fixture bundle with fake API key in excerpt → stored card has `[REDACTED]`, `redactions > 0` |
-| Subprocess | Mock looptap binary returning fixture JSON; assert argv has no shell |
-| State machine | `detected → analyzing → proposed`; rescan skips `ignored` |
-| Analyze merge | Modal mock returns widened evidence → rejected, state `failed` |
+Full matrix: [pr-roadmap.md § CI matrix](pr-roadmap.md#ci-matrix).
 
-Seed fixture: run `looptap patterns --format json` on looptap testdata or use golden from `rules.zig` `sample` constant.
-
----
-
-## What looptap is *not* building in Phase 1
-
-- tracers UI, insights DB, file watcher
-- Modal `/v1/analyze` endpoint (evolve `deploy/app.py` separately)
-- Retiring Go binary (Phase 3)
+| Test | PR |
+|------|-----|
+| Parse golden bundle + empty bundle | 0b |
+| Ingest + redact leaky fixture | 2 |
+| Mock looptap subprocess argv | 3 |
+| State machine transitions | 5 |
+| Analyze merge rejects widened evidence | 5 |
 
 ---
 
-## Cross-links in tracers repo
+## Cross-link in tracers repo
 
-After scaffold lands, add to tracers `docs/looptap-handoff.md`:
+Add to tracers `docs/looptap-handoff.md`:
 
 ```markdown
-Cross-system contracts and Phase 1 scaffold:
-https://github.com/TanGentleman/looptap/blob/main/docs/tracers-scaffold.md
+Source of truth: https://github.com/TanGentleman/looptap/blob/<sha>/docs/pr-roadmap.md
+Fixtures: copy testdata/contracts/ → test/fixtures/looptap/
 ```
-
-Parser reference: `tracers-web/src/rules.zig` (already matches `tracers.rule/v1`).

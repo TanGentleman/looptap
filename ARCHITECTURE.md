@@ -1,6 +1,6 @@
 # Architecture
 
-> **Cross-system contract:** How looptap hands off to tracers (UI, redaction, signing) and Modal (LLM polish) lives in [docs/hybrid-architecture.md](docs/hybrid-architecture.md), with JSON Schema stubs under [docs/schemas/](docs/schemas/). User stories: [docs/user-stories.md](docs/user-stories.md). tracers workflow rows are **insights** (not findings — avoids `looptap analyze` collision).
+> **Cross-system contract:** How looptap hands off to tracers (UI, redaction, signing) and Modal (LLM polish) lives in [docs/hybrid-architecture.md](docs/hybrid-architecture.md). **PR order and agent prompts:** [docs/pr-roadmap.md](docs/pr-roadmap.md). JSON Schemas: [docs/schemas/](docs/schemas/). Fixtures: [testdata/contracts/](testdata/contracts/). tracers workflow rows are **insights** (not findings — avoids `looptap analyze` collision).
 
 ## Two interfaces, that's it
 

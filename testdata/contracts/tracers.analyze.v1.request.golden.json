@@ -1,0 +1,26 @@
+{
+  "api_version": "tracers.analyze/v1",
+  "request_id": "req-golden-001",
+  "card_id": "failure-bash-enoent",
+  "pattern": {
+    "signal": "failure",
+    "tool": "Bash",
+    "error_class": "ENOENT",
+    "summary": "Bash commands fail with \"No such file or directory\" on paths the agent assumed existed",
+    "session_count": 7
+  },
+  "redacted_evidence": [
+    {
+      "tool_name": "Bash",
+      "is_error": true,
+      "excerpt": "cd packages/api && npm test\nbash: cd: packages/api: No such file or directory",
+      "redactions": 0
+    }
+  ],
+  "template_rule": {
+    "title": "Verify a path exists before cd-ing into it",
+    "snippet": "Before `cd <dir>` or running a command in a subdir, confirm the directory exists (e.g. `ls <dir>`); don't assume a path from memory.",
+    "target": "AGENTS.md",
+    "confidence": "medium"
+  }
+}

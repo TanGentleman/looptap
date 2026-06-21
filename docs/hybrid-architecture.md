@@ -4,7 +4,7 @@ Cross-system contract for the pipeline that moves a transcript from a raw JSONL 
 
 For looptap-only internals (parsers, detectors, SQLite schema), see [ARCHITECTURE.md](../ARCHITECTURE.md).
 
-For user-facing flows (install → UI → analyze → share) mapped to these contracts, see [user-stories.md](user-stories.md). For architect-vs-agent build order, see [build-strategy.md](build-strategy.md).
+For user-facing flows (install → UI → analyze → share) mapped to these contracts, see [user-stories.md](user-stories.md). For PR order, agent prompts, and CI gates, see [pr-roadmap.md](pr-roadmap.md). For boundaries vs delegation, see [build-strategy.md](build-strategy.md).
 
 ## Roles
 
@@ -364,8 +364,10 @@ Share server: canonicalize `{ card, expires_at }` → SHA-256 → ed25519 verify
 | `internal/rule/types_test.go` | Golden round-trip against tracers spec |
 | `internal/rule/redact.go` | Pre-pass redactor (non-authoritative) |
 | `cmd/patterns.go` | `--format json` bundle emitter |
+| `testdata/contracts/` | Golden fixtures — looptap owns, tracers copies |
 | `deploy/app.py` | Modal hosting (evolve toward `/v1/analyze`) |
+| `docs/pr-roadmap.md` | **Source of truth** — PR order, prompts, CI matrix |
 | `docs/hybrid-architecture.md` | Cross-system contracts and phase plan |
 | `docs/user-stories.md` | User stories → technical contracts + security checklist |
-| `docs/tracers-scaffold.md` | Phase 1 implementation handoff for tracers agents |
-| `docs/build-strategy.md` | Boundaries vs delegation, two-DB model, walking skeleton |
+| `docs/tracers-scaffold.md` | tracers file-level map |
+| `docs/build-strategy.md` | Boundaries vs delegation, two-DB model |
