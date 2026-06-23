@@ -13,6 +13,4 @@ looptap owns these files. tracers copies them into `test/fixtures/looptap/` and 
 | `tracers.analyze.v1.request.golden.json` | Cloud analyze payload (no `session_id` in evidence) |
 | `tracers.analyze.v1.response.golden.json` | Modal response envelope + enriched card |
 
-Schemas: [docs/schemas/](../../docs/schemas/).
-
-After looptap PR 0 lands, add `internal/rule/contract_test.go` to validate fixtures against schemas in CI.
+Schemas: [docs/schemas/](../../docs/schemas/). Every fixture is validated against its schema in CI by `internal/rule/contract_test.go`.

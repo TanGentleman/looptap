@@ -54,17 +54,9 @@ directories."
 
 ### Security: subprocess invocation
 
-tracers invokes looptap with **`std.process.Child` and an exact argument slice** —
-never `/bin/sh -c`. Example:
-
-```zig
-&[_][]const u8{ "looptap", "patterns", "--format", "json", "--db", db_path }
-```
-
-Paths and flags come from tracers config (`~/.tracers/config.toml`), never from
-unvalidated UI input. Reject paths containing `\0`, newlines, or `..` before exec.
-Branch names, file paths, and project names from looptap output can contain shell
-metacharacters; parameterized execution eliminates local command injection.
+Fixed-argv `std.process.Child`, no shell, paths from config only — the full rule
+(with the exact argv and reject-list) is Contract 0 in
+[hybrid-architecture.md](hybrid-architecture.md).
 
 ---
 
