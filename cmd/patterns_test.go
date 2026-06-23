@@ -3,21 +3,21 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"looptap/internal/db"
-	"looptap/internal/parser"
+	"looptap/internal/patterns"
 	"looptap/internal/rule"
-	"looptap/internal/signal"
 )
 
-// seedDB writes the same two-cluster fixture the patterns engine test uses, but
-// here we drive it through the actual cobra command to prove the gate.
+// seedDB plants the canonical two-cluster contract fixture into a throwaway DB
+// and returns its path. It defers to patterns.SeedContractFixture — the single
+// source of truth for the (6 ENOENT, 2 ECONNREFUSED) shape — so these command
+// tests and the engine's own table tests can't drift on the counts. The cmd
+// tests just ask different questions of that one seed (gate flags, formats).
 func seedDB(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "cmd.db")
@@ -26,36 +26,23 @@ func seedDB(t *testing.T) string {
 		t.Fatalf("open: %v", err)
 	}
 	defer d.Close()
+	if err := patterns.SeedContractFixture(d, false); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	return path
+}
 
-	base := time.Date(2026, 3, 1, 12, 0, 0, 0, time.UTC)
-	add := func(id string, when time.Time, content string) {
-		s := parser.Session{
-			ID: id, Source: "claude-code", Project: "/repo/app",
-			SessionID: id, StartedAt: when, EndedAt: when.Add(time.Hour),
-			RawPath: "/tmp/" + id + ".jsonl", FileHash: "h-" + id,
-			Turns: []parser.Turn{
-				{Idx: 0, Role: "user", Content: "go"},
-				{Idx: 1, Role: "tool_result", ToolName: "Bash", IsError: true, Content: content},
-			},
-		}
-		if err := d.InsertSession(s); err != nil {
-			t.Fatal(err)
-		}
-		turn := 1
-		if err := d.InsertSignals(id, []signal.Signal{
-			{SessionID: id, Type: "failure", Category: "execution", Confidence: 0.9, TurnIdx: &turn},
-		}); err != nil {
-			t.Fatal(err)
-		}
+// emptyDB opens a migrated-but-unseeded database and returns its path: no
+// sessions, no signals, so the live command still has to emit a well-formed
+// bundle with an empty (never null) cards array.
+func emptyDB(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "empty.db")
+	d, err := db.Open(path)
+	if err != nil {
+		t.Fatalf("open: %v", err)
 	}
-	for i := 0; i < 6; i++ {
-		add(fmt.Sprintf("enoent-%d", i), base.Add(time.Duration(i)*time.Hour),
-			"cd packages/api: No such file or directory")
-	}
-	for i := 0; i < 2; i++ {
-		add(fmt.Sprintf("conn-%d", i), base.Add(time.Duration(10+i)*time.Hour),
-			"dial tcp: connection refused")
-	}
+	d.Close()
 	return path
 }
 
@@ -145,6 +132,53 @@ func TestPatternsCmd_LowerGateTwoSessions(t *testing.T) {
 	}
 	if len(bundle.Cards) != 2 {
 		t.Errorf("got %d cards, want 2 at --min-sessions 2", len(bundle.Cards))
+	}
+}
+
+// TestPatternsCmd_EmptyBundle proves the "cards is never null" invariant on the
+// command's real stdout — not just the re-marshal path TestGoldenBundleRoundTrip
+// covers. Over an empty DB the bundle must serialize cards as [] (never null)
+// and shape-match the vendored empty-bundle fixture tracers parses.
+func TestPatternsCmd_EmptyBundle(t *testing.T) {
+	out, _ := runPatterns(t, emptyDB(t), "--format", "json")
+
+	// Assert on the raw bytes before Go's json decoder erases the null/[]
+	// distinction: cards must be literally "[]", not "null".
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		t.Fatalf("bundle isn't valid json: %v\n%s", err, out)
+	}
+	if got := strings.TrimSpace(string(raw["cards"])); got != "[]" {
+		t.Errorf("cards = %s, want [] (an empty array, never null)", got)
+	}
+
+	var bundle rule.Bundle
+	if err := json.Unmarshal([]byte(out), &bundle); err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle.Cards) != 0 {
+		t.Errorf("got %d cards over an empty db, want 0", len(bundle.Cards))
+	}
+	if bundle.Schema != rule.Schema {
+		t.Errorf("schema = %q, want %q", bundle.Schema, rule.Schema)
+	}
+	if bundle.GateMinSessions != 5 {
+		t.Errorf("gate_min_sessions = %d, want 5", bundle.GateMinSessions)
+	}
+
+	goldenRaw, err := os.ReadFile(filepath.Join("..", "testdata", "contracts", "tracers.rule.v1.empty-bundle.json"))
+	if err != nil {
+		t.Fatalf("read empty bundle: %v", err)
+	}
+	var golden, got map[string]any
+	if err := json.Unmarshal(goldenRaw, &golden); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatal(err)
+	}
+	if !sameJSONShape(golden, got) {
+		t.Errorf("empty bundle drifted from fixture shape:\n golden: %s\n   got: %s", goldenRaw, out)
 	}
 }
 
