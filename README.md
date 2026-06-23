@@ -38,5 +38,5 @@ looptap patterns --format json    # a tracers.rule/v1 bundle for downstream tool
 ## More
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — signals, schema, prompts, every knob.
-- [docs/](docs/) — the looptap + tracers + Modal hybrid plan: contracts, PR roadmap, build strategy. [docs/pr-roadmap.md](docs/pr-roadmap.md) is the source of truth.
+- [docs/contracts.md](docs/contracts.md) — what looptap puts on the wire (`tracers.rule/v1`). Cross-system plan lives in tracers.
 - [`deploy/`](deploy), [`scripts/`](scripts) — Modal hosting and install/release tooling.

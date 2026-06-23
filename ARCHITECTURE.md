@@ -1,6 +1,6 @@
 # Architecture
 
-> **Cross-system contract:** How looptap hands off to tracers (UI, redaction, signing) and Modal (LLM polish) lives in [docs/hybrid-architecture.md](docs/hybrid-architecture.md). **PR order and agent prompts:** [docs/pr-roadmap.md](docs/pr-roadmap.md). JSON Schemas: [docs/schemas/](docs/schemas/). Fixtures: [testdata/contracts/](testdata/contracts/). tracers workflow rows are **insights** (not findings — avoids `looptap analyze` collision).
+> **Cross-system contract:** looptap's wire shape (`tracers.rule/v1`) is documented in [docs/contracts.md](docs/contracts.md). JSON Schemas: [docs/schemas/](docs/schemas/). Fixtures: [testdata/contracts/](testdata/contracts/). tracers workflow rows are **insights** (not findings — avoids `looptap analyze` collision).
 
 ## Two interfaces, that's it
 
@@ -201,23 +201,13 @@ The clustering key is **(signal_type, tool_name, error_class)**. The error class
 
 ## Rule record (`internal/rule/` — `tracers.rule/v1`)
 
-The shared record that unifies what used to be three near-identical shapes (`advise.Recommendation`, `analyze.Finding`, and the `query` output): a **Pattern** (the failure shape), its **Evidence** (redacted example turns), and the **Rule** worth pasting somewhere. It is the contract tracers parses at its share boundary, specced in the tracers repo at `docs/rule-with-evidence.md`. The JSON tags here *are* the contract; `types_test.go` round-trips the spec's golden example so a careless rename fails at `go test`.
+The shared record that unifies what used to be three near-identical shapes (`advise.Recommendation`, `analyze.Finding`, `query` output): a **Pattern** (failure shape), **Evidence** (redacted example turns), and the **Rule** worth pasting somewhere. `internal/rule/types.go` is the source — the JSON tags *are* the contract, and `types_test.go` round-trips the golden so a careless rename fails at `go test`.
 
-```
-Bundle { schema, generated_at, gate_min_sessions, cards[] }
-  Card { id, pattern, evidence[], rule, signature }
-    Pattern  { signal, tool, error_class, summary, session_count, example_session_ids[] }
-    Evidence { session_id, turn_idx, tool_name, is_error, excerpt, redactions }
-    Rule     { title, snippet, rationale, target, confidence, source }
-```
+- **`synth.go`** — `Synthesize(pattern, examples)` builds a `Card` deterministically; `confidence` is set by session count (≥10 high, ≥5 medium, else low); `source = "template"`.
+- **`redact.go`** — best-effort pre-pass: caps excerpts (~600 chars), scrubs obvious secrets. **Not authoritative** — tracers re-redacts at ingest and at share.
+- **`seed.go` + `cmd/seed-contract-fixture`** — `patterns.SeedContractFixture(db, leaky)` plants the deterministic two-cluster fixture (6 ENOENT over gate, 2 connection-refused under). `--leaky` hangs an extra erroring turn carrying a fake API key on the newest ENOENT session so the capture exercises the redaction pre-pass against real engine output.
 
-**`synth.go`** — `Synthesize(pattern, examples)` builds a `Card` deterministically: a per-(signal, error-class) template supplies the rule wording, a generic fallback guarantees every gated cluster still yields a usable card, and `confidence` is set by session count (≥10 high, ≥5 medium, else low). `source` is `"template"` here; the LLM path may later refine the wording and stamp `"llm"`.
-
-**`redact.go`** — a deliberately small pre-pass that caps excerpts (~600 chars, keeping head and tail) and scrubs the obvious secrets (provider keys, `Authorization: Bearer …`, `NAME=secret` assignments) before they ride along as evidence. It is **precise over exhaustive** and explicitly **not** authoritative: tracers re-redacts every excerpt at its share boundary. Do not grow this into a redaction engine.
-
-**`seed.go` + `cmd/seed-contract-fixture`** — `patterns.SeedContractFixture(db, leaky)` plants the deterministic two-cluster fixture (6 ENOENT sessions over the gate, 2 connection-refused under it) that `internal/patterns`' own tests assert against. The `seed-contract-fixture` subcommand wraps it so a consumer (tracers) can build the binary, seed a throwaway DB, and capture `patterns --format json` as the *live* counterpart to the vendored golden — instead of reimplementing the seed in a foreign module that can't import looptap's internals. `--leaky` hangs one extra erroring turn (carrying a fake API key) on the newest ENOENT session: the cluster still counts 6, but the card's evidence now drags a secret through the redaction pre-pass, so the capture exercises scrubbing against real engine output. The seed helper is the single source of truth for the shape, so the live capture and the table tests can't drift on counts.
-
-> **Hybrid path:** tracers consumes `patterns --format json` (`source: "template"`) and sends redacted evidence to Modal for LLM polish (`source: "llm"`). See [docs/hybrid-architecture.md](docs/hybrid-architecture.md). The in-process `advise` / `analyze` commands still emit their own shapes until migrated or retired.
+Wire shape, argv stability, redaction layering: [docs/contracts.md](docs/contracts.md). Schema: [docs/schemas/tracers.rule.v1.json](docs/schemas/tracers.rule.v1.json).
 
 ## Advisor (`internal/advise/`)
 
