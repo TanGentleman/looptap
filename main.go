@@ -31,6 +31,7 @@ func main() {
 		cmd.NewPatternsCmd(&dbPath),
 		cmd.NewSeedContractFixtureCmd(&dbPath),
 		cmd.NewAdviseCmd(&dbPath),
+		cmd.NewDebugLookupCmd(&dbPath),
 		cmd.NewAnalyzeCmd(),
 		cmd.NewHTMLCmd(),
 		newVersionCmd(),
