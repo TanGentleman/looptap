@@ -99,6 +99,14 @@ OPENCODE_CFG_DST = "/opt/looptap/opencode.hosted.json"
 _SEGMENT = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
 _REPO_SLUG_RE = re.compile(rf"{_SEGMENT}/{_SEGMENT}")
 
+# git ref (branch/tag/sha). The bookend `[A-Za-z0-9_]` forbids a leading dash:
+# refs land in git argv positions like `git fetch origin <ref>` and
+# `git checkout <ref>`, where shlex.quote stops *shell* injection but NOT git
+# *argument* injection — an unvalidated `--upload-pack=…` / `-x` ref would be
+# parsed as a flag. Same discipline _validate_repo_slug already applies to the
+# repo slug; the two inputs deserve the same care.
+_REF_RE = re.compile(r"[A-Za-z0-9_][A-Za-z0-9._/+-]*")
+
 app = modal.App(APP_NAME)
 
 repos_volume = modal.Volume.from_name(REPOS_VOLUME_NAME, create_if_missing=True)
@@ -137,6 +145,26 @@ def _validate_repo_slug(repo: str) -> str:
     resolved = os.path.normpath(os.path.join(root, trimmed))
     if resolved != root and not resolved.startswith(root + "/"):
         raise ValueError(f"repo path {resolved!r} escapes {root!r}")
+    return trimmed
+
+
+def _validate_ref(ref: str, field: str = "ref") -> str:
+    """Validate a user-supplied git ref before it hits a git command line.
+
+    Rejects the shapes that would be parsed as git options (leading dash) or
+    that git itself refuses (`..`, trailing `/`, `.lock` suffix). Conservative
+    on purpose — the branches/tags looptap indexes ("main", "release/v0.5.0",
+    a commit sha) all pass; adversarial argument-injection payloads don't.
+    """
+    trimmed = ref.strip()
+    if not trimmed:
+        raise ValueError(f"{field} must not be empty")
+    if not _REF_RE.fullmatch(trimmed):
+        raise ValueError(
+            f"{field} must match [A-Za-z0-9._/+-] with no leading dash (got {ref!r})"
+        )
+    if ".." in trimmed or trimmed.endswith("/") or trimmed.endswith(".lock"):
+        raise ValueError(f"{field} is not a valid git ref (got {ref!r})")
     return trimmed
 
 
@@ -343,11 +371,9 @@ def web():
     def index_repo(payload: dict[str, Any] = Body(...)):
         try:
             repo = _validate_repo_slug(payload.get("repo") or "")
+            ref = _validate_ref(payload.get("ref") or "main")
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        ref = (payload.get("ref") or "main").strip()
-        if not ref:
-            raise HTTPException(status_code=400, detail="ref must not be empty")
 
         code, out, err = _sandbox_run(
             _index_script(repo, ref), INDEX_TIMEOUT,
@@ -367,11 +393,9 @@ def web():
     def analyze_repo(payload: dict[str, Any] = Body(...)):
         try:
             repo = _validate_repo_slug(payload.get("repo") or "")
+            branch = _validate_ref(payload.get("branch") or "main", field="branch")
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
-        branch = (payload.get("branch") or "main").strip()
-        if not branch:
-            raise HTTPException(status_code=400, detail="branch must not be empty")
 
         repos_volume.reload()
         if not (Path(REPOS_MOUNT) / repo).is_dir():
