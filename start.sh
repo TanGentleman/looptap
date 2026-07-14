@@ -10,9 +10,9 @@ fi
 repo_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 data_dir="${HOME}/.looptap"
 database_path="${data_dir}/looptap.db"
+looptap_bin="${LOOPTAP_BIN:-${repo_root}/looptap}"
 
 mkdir -p -- "$data_dir"
-cd -- "$repo_root"
 
 # Credentials, when needed by a command, are inherited from the environment.
-exec go run . info --db "$database_path"
+exec "$looptap_bin" info --db "$database_path"
