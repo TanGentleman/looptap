@@ -253,19 +253,18 @@ def _analyze_script(repo: str, branch: str) -> str:
     first. `git clone --local` + `git checkout` use the mounted volume, so
     they don't need network.
     """
-    src = shlex.quote(f"{REPOS_MOUNT}/{repo}")
-    b = shlex.quote(branch)
-    binary = shlex.quote(BINARY_DST)
-    cfg = shlex.quote(OPENCODE_CFG_DST)
+    src = f"{REPOS_MOUNT}/{repo}"
+    binary = BINARY_DST
+    cfg = OPENCODE_CFG_DST
     return (
         "set -euo pipefail\n"
         "work=$(mktemp -d /tmp/looptap-work.XXXXXX)/repo\n"
         f"git clone --local {src} \"$work\"\n"
         "cd \"$work\"\n"
-        f"git checkout -q {b} 2>/dev/null || git checkout -q -B {b} origin/{b}\n"
+        f"git checkout -q {branch} 2>/dev/null || git checkout -q -B {branch} origin/{branch}\n"
         f"{binary} html --agent opencode --is-sandbox "
         f"--opencode-config {cfg} "
-        f"--repo . --branch {b} --force\n"
+        f"--repo . --branch {branch} --force\n"
     )
 
 
