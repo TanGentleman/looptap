@@ -253,18 +253,24 @@ def _analyze_script(repo: str, branch: str) -> str:
     first. `git clone --local` + `git checkout` use the mounted volume, so
     they don't need network.
     """
-    src = f"{REPOS_MOUNT}/{repo}"
-    binary = BINARY_DST
-    cfg = OPENCODE_CFG_DST
+    # Everything below is interpolated into a shell script that the sandbox
+    # runs under `bash -c`. Quote every dynamic token so a repo/branch with
+    # spaces or metacharacters can't break out of the intended git/looptap
+    # arguments (CWE-78). Paths and flags from this module are quoted too —
+    # cheap insurance if they ever stop being compile-time constants.
+    src = shlex.quote(f"{REPOS_MOUNT}/{repo}")
+    b = shlex.quote(branch)
+    binary = shlex.quote(BINARY_DST)
+    cfg = shlex.quote(OPENCODE_CFG_DST)
     return (
         "set -euo pipefail\n"
         "work=$(mktemp -d /tmp/looptap-work.XXXXXX)/repo\n"
         f"git clone --local {src} \"$work\"\n"
         "cd \"$work\"\n"
-        f"git checkout -q {branch} 2>/dev/null || git checkout -q -B {branch} origin/{branch}\n"
+        f"git checkout -q {b} 2>/dev/null || git checkout -q -B {b} origin/{b}\n"
         f"{binary} html --agent opencode --is-sandbox "
         f"--opencode-config {cfg} "
-        f"--repo . --branch {branch} --force\n"
+        f"--repo . --branch {b} --force\n"
     )
 
 
