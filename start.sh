@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-NAME="$1"
-echo "Starting for $NAME"
-eval echo hello $NAME
+set -euo pipefail
+NAME="${1:-world}"
+echo "Starting for ${NAME}"
 ./looptap info --db /tmp/test.db
