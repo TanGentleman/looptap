@@ -1,5 +1,5 @@
 #!/bin/bash
 NAME=$1
 echo "Starting..."
-eval "echo hello $NAME"
+printf 'hello %s\n' "$NAME"
 echo "Done."
