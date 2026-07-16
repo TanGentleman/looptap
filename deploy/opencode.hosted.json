@@ -8,7 +8,7 @@
     "list": "allow",
     "bash": "allow",
     "edit": "deny",
-    "webfetch": "deny",
-    "websearch": "deny"
+    "webfetch": "allow",
+    "websearch": "allow"
   }
 }

