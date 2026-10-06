@@ -27,6 +27,7 @@ func main() {
 		cmd.NewSignalCmd(&dbPath),
 		cmd.NewRunCmd(&dbPath),
 		cmd.NewInfoCmd(&dbPath),
+		cmd.NewEnvCmd(),
 		cmd.NewQueryCmd(&dbPath),
 		cmd.NewPatternsCmd(&dbPath),
 		cmd.NewSeedContractFixtureCmd(&dbPath),
