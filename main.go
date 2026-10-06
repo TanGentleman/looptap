@@ -33,6 +33,7 @@ func main() {
 		cmd.NewAdviseCmd(&dbPath),
 		cmd.NewAnalyzeCmd(),
 		cmd.NewHTMLCmd(),
+		cmd.NewEnvCmd(),
 		newVersionCmd(),
 	)
 
