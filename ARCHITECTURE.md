@@ -209,6 +209,22 @@ The shared record that unifies what used to be three near-identical shapes (`adv
 
 Wire shape, argv stability, redaction layering: [docs/contracts.md](docs/contracts.md). Schema: [docs/schemas/tracers.rule.v1.json](docs/schemas/tracers.rule.v1.json).
 
+## Env (`internal/claudeenv/` + `cmd/env.go`)
+
+`looptap env` prints the environment Claude Code's Bash tool would see — the variables the model can actually read with `env` — not the catalog of knobs Claude Code itself understands.
+
+It starts from the current process environment, then overlays `env` objects in the order Claude applies them after workspace trust, later sources winning:
+
+1. `~/.claude.json` (or `$CLAUDE_CONFIG_DIR/.claude.json`; `~/.claude/.config.json` wins if that legacy file is still around)
+2. `~/.claude/settings.json`
+3. `<dir>/.claude/settings.json`
+4. `<dir>/.claude/settings.local.json`, then the copy at the main git checkout when that path differs
+5. managed settings (`/etc/claude-code/managed-settings.json`, then `managed-settings.d/*.json` in alphabetical order)
+
+Two filters match Claude's own: settings cannot clobber the ssh-tunnel auth vars when `ANTHROPIC_UNIX_SOCKET` is already set, and cannot clobber provider-routing vars when `CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST` is truthy. When `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` is on, the credential names Claude strips before spawning Bash (and their `INPUT_*` GitHub Actions twins) are omitted. Output is `KEY=value`, sorted. A settings file that isn't JSON is skipped with a warning on stderr; the rest of the environment is still printed.
+
+Live-session state — `/env` assignments and SessionStart hook scripts — is not on disk in a way this command can see, so it is not included.
+
 ## Advisor (`internal/advise/`)
 
 The `advise` command closes the loop: signals go in, CLAUDE.md rules come out.
@@ -335,6 +351,7 @@ No web framework. No ORM.
 main.go                        # cobra root
 cmd/                           # CLI command wiring
 internal/config/config.go      # config loading
+internal/claudeenv/env.go      # environment Claude's Bash tool can read
 internal/db/db.go              # Open(), Migrate(), Close()
 internal/db/queries.go         # all SQL queries
 internal/parser/types.go       # Session, Turn
