@@ -1,6 +1,6 @@
 # Architecture
 
-> **Cross-system contract:** looptap's wire shape (`tracers.rule/v1`) is documented in [docs/contracts.md](docs/contracts.md). JSON Schemas: [docs/schemas/](docs/schemas/). Fixtures: [testdata/contracts/](testdata/contracts/). tracers workflow rows are **insights** (not findings — avoids `looptap analyze` collision).
+> **Cross-system contract:** looptap's wire shape (`tracers.rule/v1`) is documented in [docs/contracts.md](docs/contracts.md). JSON Schemas: [docs/schemas/](docs/schemas/). Fixtures: [testdata/contracts/](testdata/contracts/). tracers workflow rows are **insights**.
 
 ## Two interfaces, that's it
 
@@ -42,9 +42,9 @@ Everything downstream of parsing is one three-rung ladder, each rung a wider len
 |------|-------|-------------|----------|
 | **Signal** | one turn / one session | pure | `internal/signal` |
 | **Pattern** | a failure shape recurring *across* sessions | pure | `internal/patterns` |
-| **Rule** | the remediation, with evidence | template-first; LLM optional | `internal/rule` |
+| **Rule** | the remediation, with evidence | pure (templates) | `internal/rule` |
 
-`run`/`signal` populate the bottom rung. `patterns` clusters signals into the middle rung. `rule` synthesizes the top rung — a ready-to-paste AGENTS.md / CLAUDE.md line — deterministically from a cluster, with the LLM (`advise`) as optional polish on the wording. The top rung is also the wire format looptap shares with [tracers](https://github.com/TanGentleman/tracers): `tracers.rule/v1`.
+`run`/`signal` populate the bottom rung. `patterns` clusters signals into the middle rung. `rule` synthesizes the top rung — a ready-to-paste AGENTS.md / CLAUDE.md line — deterministically from a cluster. The top rung is also the wire format looptap shares with [tracers](https://github.com/TanGentleman/tracers): `tracers.rule/v1`.
 
 ## Core types
 
@@ -214,47 +214,13 @@ The clustering key is **(signal_type, tool_name, error_class)**. The error class
 
 ## Rule record (`internal/rule/` — `tracers.rule/v1`)
 
-The shared record that unifies what used to be three near-identical shapes (`advise.Recommendation`, `analyze.Finding`, `query` output): a **Pattern** (failure shape), **Evidence** (redacted example turns), and the **Rule** worth pasting somewhere. `internal/rule/types.go` is the source — the JSON tags *are* the contract, and `types_test.go` round-trips the golden so a careless rename fails at `go test`.
+The shared record: a **Pattern** (failure shape), **Evidence** (redacted example turns), and the **Rule** worth pasting somewhere. `internal/rule/types.go` is the source — the JSON tags *are* the contract, and `types_test.go` round-trips the golden so a careless rename fails at `go test`.
 
 - **`synth.go`** — `Synthesize(pattern, examples)` builds a `Card` deterministically; `confidence` is set by session count (≥10 high, ≥5 medium, else low); `source = "template"`.
 - **`redact.go`** — best-effort pre-pass: caps excerpts (~600 chars), scrubs obvious secrets. **Not authoritative** — tracers re-redacts at ingest and at share.
 - **`seed.go` + `cmd/seed-contract-fixture`** — `patterns.SeedContractFixture(db, leaky)` plants the deterministic two-cluster fixture (6 ENOENT over gate, 2 connection-refused under). `--leaky` hangs an extra erroring turn carrying a fake API key on the newest ENOENT session so the capture exercises the redaction pre-pass against real engine output.
 
 Wire shape, argv stability, redaction layering: [docs/contracts.md](docs/contracts.md). Schema: [docs/schemas/tracers.rule.v1.json](docs/schemas/tracers.rule.v1.json).
-
-## Advisor (`internal/advise/`)
-
-The `advise` command closes the loop: signals go in, CLAUDE.md rules come out.
-
-```
-SQLite signals → context.go (gather) → prompt.go (assemble) → llm.go (Gemini) → parse JSON → print
-```
-
-**`context.go`** — SQL queries that pull signal summaries + failure/loop/misalignment details. Returns structs, not strings.
-
-**`prompt.go`** — System prompt tells the model to output a JSON array of recommendations. User prompt builder assembles signal context into labeled sections.
-
-**`llm.go`** — Thin wrapper around `genai.Client.Models.GenerateContent`. This is the only file that imports the Gemini SDK — the swap point if adk-go or another framework earns its keep later.
-
-**`advise.go`** — Orchestrator. Gather → prompt → call → parse → return. No cobra knowledge, no `os.Exit`.
-
-## Analyzer (`internal/analyze/`)
-
-The `analyze` command is `advise`'s mirror image: instead of asking "what rules should you add?", it asks "how good are the rules you already have?". Same Gemini wrapper, different prompt.
-
-```
-CLAUDE.md → reader.go → prompt.go (assemble) → advise.Client → parse JSON → print
-```
-
-**`reader.go`** — Reads the target file (default `~/.claude/CLAUDE.md`). User-facing errors for missing/empty files.
-
-**`prompt.go`** — System prompt frames the LLM as a quality reviewer (clarity, completeness, consistency, structure, actionability) and asks for findings inside a ```json fence.
-
-**`analyze.go`** — Orchestrator. Reuses `advise.NewClient` rather than duplicating the Gemini wrapper. Strips the ```json fence, parses, returns `Finding`s.
-
-## Prompt convention
-
-Every package that talks to an LLM keeps its prompts in `prompt.go`. System prompts are `const` strings; user prompts are assembled by a `buildPrompt` or `BuildUserPrompt` function. This means "find every prompt" = `grep -l systemPrompt internal/*/prompt.go`.
 
 ## Config (`~/.looptap/config.toml`)
 
@@ -274,11 +240,9 @@ loop_min_repeats       = 3
 [phrases]
 misalignment = "/path/to/replace.txt"       # override built-in phrases
 misalignment_extra = "/path/to/append.txt"  # add to built-in phrases
-
-[advise]
-api_key = ""                               # prefer GOOGLE_API_KEY env
-model = "gemini-3.1-flash-lite-preview"
 ```
+
+Unknown sections are ignored, so a leftover `[advise]` from older versions still loads.
 
 ## Dependencies
 
@@ -288,7 +252,6 @@ model = "gemini-3.1-flash-lite-preview"
 | `github.com/mattn/go-sqlite3` | SQLite driver (CGo) |
 | `github.com/BurntSushi/toml` | Config parsing |
 | `github.com/santhosh-tekuri/jsonschema/v6` | Validates contract fixtures in tests |
-| `google.golang.org/genai` | Gemini API client (for `advise` and `analyze`) |
 
 No web framework. No ORM.
 
@@ -313,15 +276,6 @@ internal/patterns/seed.go      # shared contract fixture (SeedContractFixture)
 internal/rule/types.go         # tracers.rule/v1 record (Bundle, Card, …)
 internal/rule/synth.go         # deterministic cluster → Card synthesis
 internal/rule/redact.go        # evidence excerpt cap + secret pre-redactor
-internal/advise/advise.go      # advisor orchestrator
-internal/advise/context.go     # signal context queries
-internal/advise/prompt.go      # LLM prompt templates
-internal/advise/llm.go         # Gemini API wrapper
-internal/advise/types.go       # Recommendation, AdviceResult
-internal/analyze/analyze.go    # CLAUDE.md quality reviewer
-internal/analyze/reader.go     # file I/O + default path resolution
-internal/analyze/prompt.go     # quality-review prompt templates
-internal/analyze/types.go      # Finding, AnalyzeResult
 phrases/*.txt                  # embedded phrase lists
 testdata/                      # fixture transcripts
 .github/workflows/ci.yml        # build + test on push/PR

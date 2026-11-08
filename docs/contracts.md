@@ -73,7 +73,7 @@ Empty cards: `[]` is valid — nothing crossed `--min-sessions`, not an error.
 
 ## Outstanding looptap-side work
 
-The hosted `POST /v1/analyze` Modal app was removed; `looptap analyze` still runs locally. See tracers' cross-system roadmap for the consumer side.
+The hosted `POST /v1/analyze` Modal app and the local `looptap analyze` command were removed; the `tracers.analyze/v1` schemas and fixtures stay for tracers. See tracers' cross-system roadmap for the consumer side.
 
 ## Pointers
 
@@ -83,4 +83,4 @@ The hosted `POST /v1/analyze` Modal app was removed; `looptap analyze` still run
 | tracers `docs/rule-with-evidence.md` | contract spec (signing, JCS) |
 | `docs/schemas/` | JSON Schemas (canonical) |
 | `testdata/contracts/` | golden fixtures (looptap owns; tracers copies) |
-| `ARCHITECTURE.md` | looptap internals (parsers, detectors, SQLite, prompts) |
+| `ARCHITECTURE.md` | looptap internals (parsers, detectors, SQLite) |

@@ -1,6 +1,6 @@
 # looptap
 
-Tweak that agent loop. Reads your coding agent's transcripts, flags the rough patches — correction loops, dead ends, tool-call death spirals — and dumps it to SQLite for datasette or LLM-driven CLAUDE.md suggestions.
+Tweak that agent loop. Reads your coding agent's transcripts, flags the rough patches — correction loops, dead ends, tool-call death spirals — and dumps it to SQLite for datasette or ready-to-paste CLAUDE.md rules. Everything runs offline; no API key.
 
 ## Install
 
@@ -22,7 +22,7 @@ That parses every Claude Code and Codex transcript under `~/.claude/projects/` a
 uvx datasette ~/.looptap/looptap.db --metadata metadata.json
 ```
 
-That's the tour. `looptap --help` lists the rest (`advise`, `analyze`, `parse`, `patterns`, `query`, `seed-contract-fixture`, `signal`, `version`); the why-and-how lives in [ARCHITECTURE.md](ARCHITECTURE.md).
+That's the tour. `looptap --help` lists the rest (`parse`, `patterns`, `query`, `seed-contract-fixture`, `signal`, `version`); the why-and-how lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 No transcripts handy? The repo ships fixtures:
 
