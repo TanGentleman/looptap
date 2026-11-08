@@ -44,7 +44,7 @@ Everything downstream of parsing is one three-rung ladder, each rung a wider len
 | **Pattern** | a failure shape recurring *across* sessions | pure | `internal/patterns` |
 | **Rule** | the remediation, with evidence | pure (templates) | `internal/rule` |
 
-`run`/`signal` populate the bottom rung. `patterns` clusters signals into the middle rung. `rule` synthesizes the top rung — a ready-to-paste AGENTS.md / CLAUDE.md line — deterministically from a cluster. The top rung is also the wire format looptap shares with [tracers](https://github.com/TanGentleman/tracers): `tracers.rule/v1`.
+`run`/`signal` populate the bottom rung. `patterns` clusters signals into the middle rung. `rule` synthesizes the top rung — a ready-to-paste AGENTS.md / CLAUDE.md line — deterministically from a cluster. The top rung is also the wire format looptap shares with tracers (a private repo): `tracers.rule/v1`.
 
 ## Core types
 

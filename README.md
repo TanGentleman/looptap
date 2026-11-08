@@ -22,11 +22,12 @@ go build -o looptap .
 On your own transcripts, run `looptap run` with no arguments; it writes to
 `~/.looptap/looptap.db`.
 
-To install: `go install github.com/TanGentleman/looptap@latest` or
-`scripts/install.sh` (downloads a GitHub release binary and checks it against
-`SHA256SUMS`). The newest release, v0.7.0, predates `patterns`,
-`seed-contract-fixture` and the Codex parser; build from source until a new tag
-is cut.
+To install from a clone: `go install .` (puts `looptap` in `$(go env GOPATH)/bin`).
+`scripts/install.sh` downloads a GitHub release binary and checks it against
+`SHA256SUMS`, but the newest release, v0.7.0, predates `patterns`,
+`seed-contract-fixture` and the Codex parser. `go install
+github.com/TanGentleman/looptap@latest` fails until a release with the
+`github.com/TanGentleman/looptap` module path is tagged.
 
 ## Commands
 
