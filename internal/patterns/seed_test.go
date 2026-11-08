@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"looptap/internal/db"
-	"looptap/internal/rule"
+	"github.com/TanGentleman/looptap/internal/db"
+	"github.com/TanGentleman/looptap/internal/rule"
 )
 
 // openSeeded plants the contract fixture into a throwaway db and returns it.

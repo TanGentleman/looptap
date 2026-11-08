@@ -20,8 +20,8 @@ import (
 	"strings"
 	"time"
 
-	"looptap/internal/rule"
-	"looptap/internal/signal"
+	"github.com/TanGentleman/looptap/internal/rule"
+	"github.com/TanGentleman/looptap/internal/signal"
 )
 
 // Options narrows which signals get clustered. Zero-value fields are ignored.

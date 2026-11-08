@@ -1,7 +1,7 @@
 package signal
 
 import (
-	"looptap/internal/parser"
+	"github.com/TanGentleman/looptap/internal/parser"
 )
 
 // Detector is the interface that signal detectors must implement.

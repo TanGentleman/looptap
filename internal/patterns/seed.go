@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"looptap/internal/db"
-	"looptap/internal/parser"
-	"looptap/internal/signal"
+	"github.com/TanGentleman/looptap/internal/db"
+	"github.com/TanGentleman/looptap/internal/parser"
+	"github.com/TanGentleman/looptap/internal/signal"
 )
 
 // The two canonical failure shapes the contract fixture plants. The ENOENT

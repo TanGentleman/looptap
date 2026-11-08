@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"looptap/internal/db"
+	"github.com/TanGentleman/looptap/internal/db"
 )
 
 // Run gathers signal context, asks the LLM for CLAUDE.md suggestions, and returns them.

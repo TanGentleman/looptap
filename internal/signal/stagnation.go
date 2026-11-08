@@ -1,6 +1,6 @@
 package signal
 
-import "looptap/internal/parser"
+import "github.com/TanGentleman/looptap/internal/parser"
 
 // Stagnation detects repetitive assistant behavior — saying the same thing in different fonts.
 type Stagnation struct{}

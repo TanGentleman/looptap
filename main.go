@@ -2,14 +2,27 @@ package main
 
 import (
 	"fmt"
-	"looptap/cmd"
 	"os"
+	"runtime/debug"
+
+	"github.com/TanGentleman/looptap/cmd"
 
 	"github.com/spf13/cobra"
 )
 
-// Version is stamped at build time via -ldflags.
+// Version is stamped at build time via -ldflags. `go install ...@vX.Y.Z`
+// builds fall back to the module version.
 var Version = "dev"
+
+func version() string {
+	if Version != "dev" {
+		return Version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return Version
+}
 
 func main() {
 	var dbPath string
@@ -46,7 +59,7 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print the looptap version",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Fprintln(cmd.OutOrStdout(), Version)
+			fmt.Fprintln(cmd.OutOrStdout(), version())
 		},
 	}
 }

@@ -3,9 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"looptap/internal/advise"
-	"looptap/internal/config"
-	"looptap/internal/db"
+	"github.com/TanGentleman/looptap/internal/advise"
+	"github.com/TanGentleman/looptap/internal/config"
+	"github.com/TanGentleman/looptap/internal/db"
 	"os"
 	"strings"
 

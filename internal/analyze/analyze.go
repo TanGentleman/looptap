@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"looptap/internal/advise"
+	"github.com/TanGentleman/looptap/internal/advise"
 )
 
 // Run reads a CLAUDE.md file, sends it to the LLM for quality review, and returns findings.

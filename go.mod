@@ -1,4 +1,4 @@
-module looptap
+module github.com/TanGentleman/looptap
 
 go 1.26.0
 

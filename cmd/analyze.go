@@ -3,8 +3,8 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"looptap/internal/analyze"
-	"looptap/internal/config"
+	"github.com/TanGentleman/looptap/internal/analyze"
+	"github.com/TanGentleman/looptap/internal/config"
 	"os"
 	"strings"
 

@@ -1,6 +1,6 @@
 package analyze
 
-import "looptap/internal/advise"
+import "github.com/TanGentleman/looptap/internal/advise"
 
 // AnalyzeRequest controls what gets analyzed.
 type AnalyzeRequest struct {
