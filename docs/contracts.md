@@ -1,6 +1,6 @@
 # looptap contracts
 
-What looptap puts on the wire. The cross-system narrative — state machine, Modal,
+What looptap puts on the wire. The cross-system narrative — state machine,
 share, signing — lives in tracers `docs/architecture.md`; this file describes only
 the producer side.
 
@@ -73,7 +73,7 @@ Empty cards: `[]` is valid — nothing crossed `--min-sessions`, not an error.
 
 ## Outstanding looptap-side work
 
-Modal `POST /v1/analyze` lives in `deploy/` — see tracers' cross-system roadmap for the consumer side.
+The hosted `POST /v1/analyze` Modal app was removed; `looptap analyze` still runs locally. See tracers' cross-system roadmap for the consumer side.
 
 ## Pointers
 

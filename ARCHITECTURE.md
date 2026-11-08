@@ -252,56 +252,6 @@ CLAUDE.md → reader.go → prompt.go (assemble) → advise.Client → parse JSO
 
 **`analyze.go`** — Orchestrator. Reuses `advise.NewClient` rather than duplicating the Gemini wrapper. Strips the ```json fence, parses, returns `Finding`s.
 
-## HTML report (`internal/htmlreport/`)
-
-The `html` command points a coding agent at a git branch and asks it to write a shareable story for the rest of the team. Unlike `advise` and `analyze`, the LLM is not called via an SDK — it's a plain subprocess invocation of the agent's CLI in print mode. Two agents are supported: `claude` (Claude Code, the default) and `opencode` (sst/opencode).
-
-```
-HTMLSettings → resolve.go (filesystem + git + agent) → Resolved → generate.go (agent CLI) → HTML string
-```
-
-**`types.go`** — `HTMLSettings` is the user-facing knob bag: `RepoPath`, `BranchMode` (`current` | `default` | `custom`), `BranchName`, `Agent` (`claude` | `opencode`), `OpencodeConfigPath`. `Resolved` is the post-validation shape — absolute repo path, concrete branch name, concrete agent, absolute opencode config path — and everything downstream reads from it. Keep `HTMLSettings` small; model name, tone, section toggles slot in as they earn their keep (or land in the opencode config file for the opencode path).
-
-**`resolve.go`** — Verifies the repo path exists, is a directory, and is actually a git repo (`git rev-parse --show-toplevel`). Then resolves the branch: `current` reads HEAD and errors on detached state; `default` tries `origin/HEAD` and falls back to `main`/`master`; `custom` verifies the branch exists locally or on `origin`. `ParseBranchFlag` turns the raw `--branch`/`LOOPTAP_BRANCH` string into a `(mode, name)` pair; `ParseAgentFlag` does the same for `--agent`/`LOOPTAP_AGENT`. For opencode, `resolveAgentConfig` also asserts that `OpencodeConfigPath` points at a real file and makes it absolute.
-
-**`prompt.go`** — System append (forces single-HTML output) and user prompt builder (branch analysis steps + output constraints). Both prompts are agent-agnostic; the agent-specific wrapping lives in `generate.go`.
-
-**`generate.go`** — Shells out to the agent via an injectable `Runner` seam:
-
-```go
-type Runner func(ctx context.Context, dir string, args []string) (string, error)
-func Generate(ctx context.Context, r *Resolved, runner Runner) (string, error)
-```
-
-A nil runner uses the real agent binary on PATH for `r.Agent`; tests pass a fake. `buildArgsFor(r)` picks between `buildClaudeArgs` and `buildOpencodeArgs`.
-
-Claude invocation:
-
-```
-claude -p <prompt>
-  --output-format text
-  --permission-mode bypassPermissions
-  --allowedTools Bash,Read,Glob,Grep
-  --append-system-prompt <HTML-only instruction>
-  --max-turns 40
-```
-
-Override the binary with `LOOPTAP_CLAUDE_BIN`.
-
-Opencode invocation:
-
-```
-opencode run <prompt> --dangerously-skip-permissions
-```
-
-With `OPENCODE_CONFIG=<absolute path to JSON>` set in the subprocess env. Allowed tools, model, provider credentials, and system prompt all live in that config file — opencode's `run` subcommand doesn't expose `--allowedTools` or `--append-system-prompt`, so the JSON is the knob bag. The strict HTML-only instruction (normally claude's `--append-system-prompt`) is folded into the user prompt for opencode because its `--system` flag *overrides* rather than appends and would clobber the config's system prompt. Override the binary with `LOOPTAP_OPENCODE_BIN`.
-
-**Default config (`defaults.go` + `opencode.default.json`)** — when `--opencode-config` is unset, `runOpencode` materializes the embedded `DefaultOpencodeConfig` bytes to a tempfile for the duration of the call. The default is a read-only shape matched to branch-inspection: `read`/`glob`/`grep`/`list`/`bash` allow, `edit`/`webfetch`/`websearch` deny. Schema follows https://opencode.ai/config.json: top-level `$schema`, `model` (`provider/model-id`), and `permission` (object of per-tool `"allow"|"deny"|"ask"` actions; `write`/`edit`/`patch`/`multiedit` all fold into `permission.edit`; `bash` can also take a nested pattern map). `TestDefaultOpencodeConfig_Schema` locks the shape down so a careless edit to the JSON fails at `go test`, not at runtime.
-
-The working directory is set to `r.RepoPath`, so git Just Works. The prompt walks the agent through finding the base branch, reading the diff and changed files, and writing narrative + commits + files + risks into a single self-contained `<!doctype html>…</html>` document with inline CSS. `stripFences` forgives a stray ```html wrapper; `looksLikeHTML` rejects anything that doesn't look like a document so we fail loudly instead of writing plain text to disk.
-
-The cobra wiring in `cmd/html.go` stays thin: flag/env resolution, confirmation prompt (skipped by `--force`), one `Generate` call, then either stdout or `-o file`.
-
 ## Prompt convention
 
 Every package that talks to an LLM keeps its prompts in `prompt.go`. System prompts are `const` strings; user prompts are assembled by a `buildPrompt` or `BuildUserPrompt` function. This means "find every prompt" = `grep -l systemPrompt internal/*/prompt.go`.
@@ -372,10 +322,6 @@ internal/analyze/analyze.go    # CLAUDE.md quality reviewer
 internal/analyze/reader.go     # file I/O + default path resolution
 internal/analyze/prompt.go     # quality-review prompt templates
 internal/analyze/types.go      # Finding, AnalyzeResult
-internal/htmlreport/types.go     # HTMLSettings, Resolved, BranchMode
-internal/htmlreport/resolve.go   # repo + branch validation
-internal/htmlreport/prompt.go    # HTML report prompt templates
-internal/htmlreport/generate.go  # claude -p subprocess invocation
 phrases/*.txt                  # embedded phrase lists
 testdata/                      # fixture transcripts
 .github/workflows/ci.yml        # build + test on push/PR

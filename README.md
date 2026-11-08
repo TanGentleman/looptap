@@ -20,7 +20,7 @@ That parses every Claude Code and Codex transcript under `~/.claude/projects/` a
 uvx datasette ~/.looptap/looptap.db --metadata metadata.json
 ```
 
-That's the tour. `looptap --help` lists the rest (`advise`, `analyze`, `html`, `parse`, `patterns`, `query`, `seed-contract-fixture`, `signal`, `version`); the why-and-how lives in [ARCHITECTURE.md](ARCHITECTURE.md).
+That's the tour. `looptap --help` lists the rest (`advise`, `analyze`, `parse`, `patterns`, `query`, `seed-contract-fixture`, `signal`, `version`); the why-and-how lives in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 Pipe rough sessions to whatever tool wants them next:
 
@@ -39,4 +39,4 @@ looptap patterns --format json    # a tracers.rule/v1 bundle for downstream tool
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — signals, schema, prompts, every knob.
 - [docs/contracts.md](docs/contracts.md) — what looptap puts on the wire (`tracers.rule/v1`). Cross-system plan lives in tracers.
-- [`deploy/`](deploy), [`scripts/`](scripts) — Modal hosting and install/release tooling.
+- [`scripts/`](scripts) — install and release tooling.

@@ -32,7 +32,6 @@ func main() {
 		cmd.NewSeedContractFixtureCmd(&dbPath),
 		cmd.NewAdviseCmd(&dbPath),
 		cmd.NewAnalyzeCmd(),
-		cmd.NewHTMLCmd(),
 		newVersionCmd(),
 	)
 
