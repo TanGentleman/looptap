@@ -1,6 +1,9 @@
 package parser
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -11,6 +14,7 @@ func TestClaudeCodeCanParse(t *testing.T) {
 		"/home/user/.claude/projects/-hash/abc-123.jsonl",
 		"/Users/dev/.claude/projects/foo/session.jsonl",
 		"/home/user/.claude/projects/-hash/sessions/abc-123.jsonl", // old layout
+		"../../testdata/claude_code/simple_session.jsonl",          // sniffed
 	}
 	no := []string{
 		"/home/user/.claude/projects/-hash/abc-123.json",          // wrong extension
@@ -128,3 +132,29 @@ func TestClaudeCodeParseEmptyLines(t *testing.T) {
 		t.Error("expected error for missing file")
 	}
 }
+
+func TestClaudeCodeCanParseSniff(t *testing.T) {
+	dir := t.TempDir()
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"claude code", `{"type":"summary","summary":"x"}` + "\n" + `{"type":"user","sessionId":"s1","message":{"role":"user","content":"hi"}}`, true},
+		{"codex rollout", `{"timestamp":"2026-01-05T15:00:00.000Z","type":"session_meta","payload":{"id":"s1"}}`, false},
+		{"not json", "hello\n", false},
+		{"empty", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(dir, strings.ReplaceAll(tt.name, " ", "_")+".jsonl")
+			if err := os.WriteFile(path, []byte(tt.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if got := (&ClaudeCode{}).CanParse(path); got != tt.want {
+				t.Errorf("CanParse = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+

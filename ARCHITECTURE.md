@@ -146,7 +146,7 @@ Each line is a JSON object with a `type` field. We parse `"user"` and `"assistan
 
 **Metadata:** `sessionId`, `cwd` (→ Project), `gitBranch`, `message.model`, timestamps from first/last lines. Session ID is `sha256("claude-code" + sessionId)`.
 
-Subagent transcripts (in `<session>/subagents/`) are skipped.
+Subagent transcripts (in `<session>/subagents/`) are skipped. Files under `.claude/projects/` are taken on path alone; anything else (`$CLAUDE_CONFIG_DIR/projects`, a directory passed to `parse`) is accepted if one of its first 20 lines is a `user`/`assistant` record with a `sessionId`.
 
 ## Signal detection rules
 
