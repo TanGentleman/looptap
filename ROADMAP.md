@@ -63,6 +63,7 @@ Each branch is based on the one before it. All pass `go vet`, `go test -race` an
   v3.14.1; table tests for the seven detectors and an end-to-end test of the README
   example; README rewritten; ARCHITECTURE matches the detectors; CI runs the quick
   start. Needs `-6`.
+- `looptap-8`: README cut to 27 words; details moved to IMPLEMENTATION.md.
 
 ## Apply a branch upstream
 
@@ -77,8 +78,8 @@ go vet ./... && go test -race -count=1 ./...
 ```
 
 For a stacked branch, use the previous branch as the base: `origin/looptap-1..origin/looptap-2`.
-For the whole stack, `"$base"..origin/looptap-7` (or `..origin/looptap-5` to keep
-`advise` and `analyze`; `-7` sits on `-6`).
+For the whole stack, `"$base"..origin/looptap-8` (or `..origin/looptap-5` to keep
+`advise` and `analyze`; `-7` and `-8` sit on `-6`).
 If `git am` rejects a hunk over line endings, retry with `git am --keep-cr`.
 
 ## Needs Tan
