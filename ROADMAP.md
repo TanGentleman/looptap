@@ -1,6 +1,6 @@
 # looptap roadmap
 
-looptap reads Claude Code (and soon Codex) transcripts from disk, flags rough patches
+looptap reads Claude Code and Codex transcripts from disk, flags rough patches
 (correction loops, failing tools, repeated tool calls) with seven offline detectors, and
 writes sessions, turns and signals to SQLite. `patterns` then turns failures that repeat
 across sessions into CLAUDE.md/AGENTS.md rules. For people who use coding agents daily and
@@ -63,15 +63,15 @@ Each branch is based on the one before it. All pass `go vet`, `go test -race` an
 
 ```bash
 # in kranti-sandbox: everything after the import commit
-base=$(git log -1 --format=%H --grep='^Import looptap upstream' looptap-1)
-git format-patch --relative=looptap "$base"..looptap-1 -o /tmp/looptap-1
+base=$(git log -1 --format=%H --grep='^Import looptap upstream' origin/looptap-1)
+git format-patch --relative=looptap "$base"..origin/looptap-1 -o /tmp/looptap-1
 # in a clean upstream clone at d8ab84b
 git clone https://github.com/TanGentleman/looptap && cd looptap
 git am /tmp/looptap-1/*.patch
 go vet ./... && go test -race -count=1 ./...
 ```
 
-For a stacked branch, use the previous branch as the base: `looptap-1..looptap-2`.
+For a stacked branch, use the previous branch as the base: `origin/looptap-1..origin/looptap-2`.
 If `git am` rejects a hunk over line endings, retry with `git am --keep-cr`.
 
 ## Needs Tan
