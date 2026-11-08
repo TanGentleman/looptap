@@ -324,7 +324,7 @@ model = "gemini-3.1-flash-lite-preview"
 | `github.com/spf13/cobra` | CLI framework |
 | `github.com/mattn/go-sqlite3` | SQLite driver (CGo) |
 | `github.com/BurntSushi/toml` | Config parsing |
-| `github.com/stretchr/testify` | Test assertions |
+| `github.com/santhosh-tekuri/jsonschema/v6` | Validates contract fixtures in tests |
 | `google.golang.org/genai` | Gemini API client (for `advise` and `analyze`) |
 
 No web framework. No ORM.
