@@ -134,7 +134,7 @@ Indexes on `signals(signal_type)`, `signals(session_id)`, `sessions(source)`, `s
 
 Each line is a JSON object with a `type` field. We parse `"user"` and `"assistant"`, skip everything else (`file-history-snapshot`, `progress`, `last-prompt`, `summary`).
 
-**User messages:** `message.content` is either a string (plain text) or an array of content blocks (tool results).
+**User messages:** `message.content` is either a string (plain text) or an array of content blocks (tool results). Lines with `isMeta` (injected caveats, skill bodies, hook output) or `isCompactSummary` (the summary written after `/compact`) are skipped: the user didn't type them.
 
 **Assistant messages:** `message.content` is always an array — `text`, `tool_use`, and `thinking` blocks. Thinking blocks are skipped.
 

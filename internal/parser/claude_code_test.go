@@ -158,3 +158,26 @@ func TestClaudeCodeCanParseSniff(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSkipsMetaAndCompactSummary(t *testing.T) {
+	s, err := (&ClaudeCode{}).Parse("../../testdata/claude_code/meta_session.jsonl")
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	want := []struct{ role, content string }{
+		{"user", "add a --verbose flag"},
+		{"assistant", "Added --verbose to main.go."},
+		{"user", "thanks, that works"},
+	}
+	if len(s.Turns) != len(want) {
+		t.Fatalf("got %d turns, want %d: %+v", len(s.Turns), len(want), s.Turns)
+	}
+	for i, w := range want {
+		if s.Turns[i].Role != w.role || s.Turns[i].Content != w.content {
+			t.Errorf("turn %d = %s %q, want %s %q", i, s.Turns[i].Role, s.Turns[i].Content, w.role, w.content)
+		}
+	}
+	// Skipped lines still count toward session timing
+	if got := s.StartedAt.Format("15:04:05"); got != "09:00:00" {
+		t.Errorf("StartedAt = %s, want 09:00:00", got)
+	}
+}

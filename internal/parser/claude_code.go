@@ -133,6 +133,12 @@ func (c *ClaudeCode) Parse(path string) (Session, error) {
 			continue
 		}
 
+		// Injected context (command caveats, skill bodies, hook output) and
+		// compaction summaries ride in "user" lines but nobody typed them.
+		if jl.Type == "user" && (jl.IsMeta || jl.IsCompactSummary) {
+			continue
+		}
+
 		var msg jsonMessage
 		if err := json.Unmarshal(jl.Message, &msg); err != nil {
 			continue
@@ -340,6 +346,9 @@ type jsonLine struct {
 	GitBranch string          `json:"gitBranch"`
 	Message   json.RawMessage `json:"message"`
 	UUID      string          `json:"uuid"`
+
+	IsMeta           bool `json:"isMeta"`
+	IsCompactSummary bool `json:"isCompactSummary"`
 }
 
 type jsonMessage struct {
