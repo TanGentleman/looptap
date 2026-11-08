@@ -65,23 +65,6 @@ Each branch is based on the one before it. All pass `go vet`, `go test -race` an
   start. Needs `-6`.
 - `looptap-8`: README cut to 27 words; details moved to IMPLEMENTATION.md.
 
-## Apply a branch upstream
-
-```bash
-# in kranti-sandbox: everything after the import commit
-base=$(git log -1 --format=%H --grep='^Import looptap upstream' origin/looptap-1)
-git format-patch --relative=looptap "$base"..origin/looptap-1 -o /tmp/looptap-1
-# in a clean upstream clone at d8ab84b
-git clone https://github.com/TanGentleman/looptap && cd looptap
-git am /tmp/looptap-1/*.patch
-go vet ./... && go test -race -count=1 ./...
-```
-
-For a stacked branch, use the previous branch as the base: `origin/looptap-1..origin/looptap-2`.
-For the whole stack, `"$base"..origin/looptap-8` (or `..origin/looptap-5` to keep
-`advise` and `analyze`; `-7` and `-8` sit on `-6`).
-If `git am` rejects a hunk over line endings, retry with `git am --keep-cr`.
-
 ## Needs Tan
 
 - Cut a release from main (`cut-release.yml`) once the stack lands, so `install.sh`
