@@ -92,7 +92,7 @@ If `git am` rejects a hunk over line endings, retry with `git am --keep-cr`.
 - `go install github.com/TanGentleman/looptap@latest` only works after `-5` lands upstream
   (and needs a C compiler for go-sqlite3).
 - Go floor raised to 1.26 on `-1` (needed by current grpc via genai). `-6` drops genai, but
-  `golang.org/x/text` v0.43 (via cobra) also declares go 1.26.0, so the floor stays unless
+  `golang.org/x/text` v0.43 (via jsonschema, test-only) also declares go 1.26.0, so the floor stays unless
   you pin older deps.
 - `-6` removes `advise` and `analyze`; anyone scripting them with `GOOGLE_API_KEY` loses
   them. Skip `-6` if you still use them.
