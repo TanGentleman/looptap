@@ -58,7 +58,7 @@ func sniffCodex(path string) bool {
 //   - response_item message (assistant) -> assistant
 //   - function_call, custom_tool_call, local_shell_call -> tool_use
 //   - function_call_output, custom_tool_call_output -> tool_result,
-//     IsError when the output reports a non-zero exit code
+//     IsError when the output header reports a non-zero exit code
 //
 // Reasoning, developer messages and other events are skipped.
 func (c *Codex) Parse(path string) (Session, error) {
@@ -149,13 +149,13 @@ func (c *Codex) Parse(path string) (Session, error) {
 				toolNames[p.CallID] = "local_shell"
 				add(Turn{Role: "tool_use", ToolName: "local_shell", Content: string(p.Action), Time: ts})
 			case "function_call_output", "custom_tool_call_output":
-				out := codexOutput(p.Output)
+				out, failed := codexOutput(p.Output)
 				add(Turn{
 					Role:     "tool_result",
 					ToolName: toolNames[p.CallID],
 					Content:  out,
 					Time:     ts,
-					IsError:  codexFailed(out),
+					IsError:  failed,
 				})
 			}
 		}
@@ -204,13 +204,16 @@ func codexText(raw json.RawMessage) string {
 	return strings.Join(parts, "\n")
 }
 
-// codexOutput flattens a tool output: a plain string, a list of content
-// items, or the older {"output": ..., "metadata": {"exit_code": N}} JSON
-// string, which is rewritten to the current "Exit code: N" header.
-func codexOutput(raw json.RawMessage) string {
+// codexOutput flattens a tool output (a string or a list of content items)
+// and reports whether it failed. Shell tools prefix their output with a
+// header ("Exit code: N" or "Process exited with code N", wall time, ...,
+// then "Output:"); the header is dropped so every result doesn't read as
+// "exit code" to the failure detector. Older rollouts wrap output as
+// {"output": ..., "metadata": {"exit_code": N}}.
+func codexOutput(raw json.RawMessage) (string, bool) {
 	var s string
 	if json.Unmarshal(raw, &s) != nil {
-		return codexText(raw)
+		return codexText(raw), false
 	}
 	var legacy struct {
 		Output   *string `json:"output"`
@@ -219,22 +222,35 @@ func codexOutput(raw json.RawMessage) string {
 		} `json:"metadata"`
 	}
 	if strings.HasPrefix(s, "{") && json.Unmarshal([]byte(s), &legacy) == nil && legacy.Output != nil && legacy.Metadata.ExitCode != nil {
-		return fmt.Sprintf("Exit code: %d\n%s", *legacy.Metadata.ExitCode, *legacy.Output)
+		return *legacy.Output, *legacy.Metadata.ExitCode != 0
 	}
-	return s
+	return splitCodexHeader(s)
 }
 
-// Shell tools put the exit code in a header line: "Exit code: N" (exec)
-// or "Process exited with code N" (unified exec).
-var codexExitCode = regexp.MustCompile(`(?m)^(?:Exit code: |Process exited with code )(-?\d+)\s*$`)
+var (
+	codexHeaderLine = regexp.MustCompile(`^(Exit code: -?\d+|Process exited with code -?\d+|Wall time: .*|Chunk ID: .*|Process running with session ID .*|Original token count: \d+|Total output lines: \d+)$`)
+	codexExitCode   = regexp.MustCompile(`^(?:Exit code: |Process exited with code )(-?\d+)$`)
+)
 
-func codexFailed(out string) bool {
-	m := codexExitCode.FindStringSubmatch(out)
-	if m == nil {
-		return false
+func splitCodexHeader(s string) (string, bool) {
+	head, body, ok := strings.Cut(s, "\nOutput:\n")
+	if !ok {
+		head, ok = strings.CutSuffix(s, "\nOutput:")
+		if !ok {
+			return s, false
+		}
 	}
-	code, err := strconv.Atoi(m[1])
-	return err == nil && code != 0
+	failed := false
+	for _, line := range strings.Split(head, "\n") {
+		if !codexHeaderLine.MatchString(line) {
+			return s, false
+		}
+		if m := codexExitCode.FindStringSubmatch(line); m != nil {
+			code, _ := strconv.Atoi(m[1])
+			failed = code != 0
+		}
+	}
+	return body, failed
 }
 
 type codexLine struct {

@@ -3,6 +3,7 @@ package parser
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -93,8 +94,8 @@ func TestCodexParse(t *testing.T) {
 	if got := s.Turns[0].Content; got != "fix the failing test in store_test.go" {
 		t.Errorf("first user turn = %q", got)
 	}
-	if got := s.Turns[10].Content; got != "Exit code: 0\n" {
-		t.Errorf("legacy output = %q", got)
+	if got := s.Turns[2].Content; !strings.HasPrefix(got, "--- FAIL: TestStore") {
+		t.Errorf("failing exec output = %q, want header stripped", got)
 	}
 }
 
@@ -103,21 +104,23 @@ func TestCodexOutput(t *testing.T) {
 		name, raw, want string
 		failed          bool
 	}{
-		{"exec", `"Exit code: 2\nWall time: 0.1 seconds\nOutput:\nboom"`, "Exit code: 2\nWall time: 0.1 seconds\nOutput:\nboom", true},
-		{"unified exec", `"Wall time: 1 seconds\nProcess exited with code 0\nOutput:\nok"`, "Wall time: 1 seconds\nProcess exited with code 0\nOutput:\nok", false},
-		{"legacy json", `"{\"output\":\"nope\\n\",\"metadata\":{\"exit_code\":127}}"`, "Exit code: 127\nnope\n", true},
+		{"exec", `"Exit code: 2\nWall time: 0.1 seconds\nOutput:\nboom"`, "boom", true},
+		{"exec truncated", `"Exit code: 0\nWall time: 3 seconds\nTotal output lines: 900\nOutput:\nok"`, "ok", false},
+		{"unified exec", `"Chunk ID: 1\nWall time: 1.0000 seconds\nProcess exited with code 0\nOriginal token count: 1\nOutput:\nok"`, "ok", false},
+		{"still running", `"Chunk ID: 1\nWall time: 10.0000 seconds\nProcess running with session ID 7\nOriginal token count: 0\nOutput:"`, "", false},
+		{"legacy json", `"{\"output\":\"nope\\n\",\"metadata\":{\"exit_code\":127}}"`, "nope\n", true},
 		{"content items", `[{"type":"input_text","text":"a"},{"type":"input_image","image_url":"x"},{"type":"input_text","text":"b"}]`, "a\nb", false},
-		{"no exit code", `"Success. Updated the following files:\nM a.go"`, "Success. Updated the following files:\nM a.go", false},
-		{"exit code mid-text", `"grep found: Exit code: 1 in log"`, "grep found: Exit code: 1 in log", false},
+		{"no header", `"Success. Updated the following files:\nM a.go"`, "Success. Updated the following files:\nM a.go", false},
+		{"not a header", `"grep hit: Exit code: 1\nOutput:\nx"`, "grep hit: Exit code: 1\nOutput:\nx", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := codexOutput([]byte(tt.raw))
+			got, failed := codexOutput([]byte(tt.raw))
 			if got != tt.want {
-				t.Errorf("codexOutput = %q, want %q", got, tt.want)
+				t.Errorf("content = %q, want %q", got, tt.want)
 			}
-			if f := codexFailed(got); f != tt.failed {
-				t.Errorf("codexFailed = %v, want %v", f, tt.failed)
+			if failed != tt.failed {
+				t.Errorf("failed = %v, want %v", failed, tt.failed)
 			}
 		})
 	}

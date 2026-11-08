@@ -156,7 +156,7 @@ Rollouts live in `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl` (and `archive
 - `event_msg` / `user_message` → `Role: "user"`. The matching `response_item` user message is skipped, as are the injected AGENTS.md, environment and developer messages.
 - `response_item` assistant `message` → `Role: "assistant"`, `output_text` parts joined
 - `function_call`, `custom_tool_call`, `local_shell_call` → `Role: "tool_use"`
-- `function_call_output`, `custom_tool_call_output` → `Role: "tool_result"`, `ToolName` from the call, `IsError` when the output has a non-zero `Exit code: N` or `Process exited with code N` header (older `{"output","metadata":{"exit_code"}}` outputs too)
+- `function_call_output`, `custom_tool_call_output` → `Role: "tool_result"`, `ToolName` from the call, `IsError` when the output header (`Exit code: N` or `Process exited with code N`, wall time, ..., `Output:`) has a non-zero code; the header is dropped from `Content` so the failure detector's "exit code" pattern doesn't fire on every command. Older `{"output","metadata":{"exit_code"}}` outputs are unwrapped the same way.
 - `reasoning`, `compacted`, token counts and other events are skipped
 
 **Metadata:** first `session_meta` gives `id`, `cwd`, `git.branch`; `turn_context.model` gives the model. Session ID is `sha256("codex" + id)`. Compressed `.jsonl.zst` rollouts are not read.
