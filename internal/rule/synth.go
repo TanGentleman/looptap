@@ -23,8 +23,8 @@ const maxEvidence = 3
 // Synthesize turns a clustered Pattern and its example turns into a Card,
 // deterministically — NO LLM, NO API key. A per-(signal, error-class) template
 // supplies the rule wording; a generic fallback guarantees every gated cluster
-// still yields a usable card. The LLM path (advise) may later refine the
-// wording, but it starts from exactly this.
+// still yields a usable card. A downstream LLM may refine the wording (and
+// stamp source "llm"), but it starts from exactly this.
 func Synthesize(p Pattern, examples []ExampleTurn) Card {
 	title, snippet, target := templateFor(p)
 	return Card{
