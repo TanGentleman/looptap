@@ -89,3 +89,11 @@ jobs:
 
       - name: "Smoke: binary boots and SQLite migration runs"
         run: ./scripts/smoke-db.sh ./looptap /tmp/ci-smoke.db
+
+      - name: README quick start on the bundled fixtures
+        run: |
+          ./looptap run testdata/claude_code testdata/codex --db /tmp/demo.db
+          ./looptap query --db /tmp/demo.db --signal failure --format paths | grep -qx 'testdata/codex/rollout-2026-11-01T10-00-00-0199a000-0000-7000-8000-000000000001.jsonl'
+          ./looptap info --db /tmp/demo.db
+          ./looptap seed-contract-fixture --db /tmp/p.db
+          ./looptap patterns --db /tmp/p.db | grep -q 'ENOENT'
