@@ -16,39 +16,48 @@ want to see where the agent keeps tripping.
 - Go 1.24 is out of support (go.dev lists 1.27.3 and 1.26.10). Dependencies were 4-25
   minor versions behind (`go get -u ./...`); genai 1.77 needs grpc 1.85, which needs Go 1.26.
 - Codex: `internal/parser/codex.go` is a stub that errors, so every file under
-  `~/.codex/sessions` prints `skip ... not yet implemented`.
+  `~/.codex/sessions` prints `skip ... not yet implemented`. Current format checked
+  against openai/codex `codex-rs/protocol` (main, 2026-11-08).
 - `looptap parse <dir>` only accepts files whose path contains `.claude/projects/`:
   `looptap parse testdata/claude_code` finds 0 files.
-- Claude Code: only `~/.claude/projects` is scanned; `CLAUDE_CONFIG_DIR` and
-  `~/.config/claude/projects` are ignored.
+- Claude Code: only `~/.claude/projects` is scanned; `CLAUDE_CONFIG_DIR` is ignored.
+  Injected `isMeta` lines (command caveats, skill bodies) and the `/compact` summary are
+  read as user turns. Checked against the strings in `@anthropic-ai/claude-code` 2.1.319.
 - Dead links: `https://github.com/TanGentleman/tracers` (404 without auth; the contract
-  docs depend on it), schema `$id`s on `looptap.dev` (domain does not resolve; ids only).
-- Open upstream PRs: #59 dependabot (applied on `-1`), #8 (dirty, Gemini JSON parsing),
-  #55-#58 and #60-#62 (Cursor drafts: `start.sh` injection demos and `looptap env`).
+  docs depend on it), schema `$id`s on `looptap.dev` (no DNS record; the ids are only
+  used as keys in `internal/rule/contract_test.go`, so tests pass).
+- Open upstream PRs: #59 dependabot (applied on `-1`), #8 (Gemini JSON parsing), and
+  drafts #55-#58, #60-#62 (`start.sh` injection demos, `looptap env`).
 
 ## Signal vs noise
 
 Keep: `parse` -> `signal` (`run` does both) -> `query` / `patterns`, plus `info`. The
 parser and detector interfaces, SQLite schema, `metadata.json` for datasette.
 
-Cut or fold:
-- `html` (asks an agent to write a branch report; unrelated to transcripts),
-  `.github/workflows/html-report.yml`, the opencode configs.
-- `deploy/` (Modal app), `scripts/setup.sh`, `scripts/deploy.sh`, `example.env`.
-- `analyze` (Gemini review of a CLAUDE.md file; does not read transcripts).
-- Later, maybe: `advise` (Gemini) now that `patterns` writes rules with no API key; it is
-  the only user of genai and most of `go.sum`.
+Cut on `-4`: `html` (asks an agent to write a branch report; never reads transcripts),
+`.github/workflows/html-report.yml`, the opencode configs, `deploy/` (Modal app),
+`scripts/setup.sh`, `scripts/deploy.sh`, `example.env`. About 2,700 lines.
+
+Left alone, candidates for a later cut:
+- `analyze` (Gemini review of a CLAUDE.md file; does not read transcripts). Kept because
+  `tracers.analyze/v1` schemas and fixtures describe its output.
+- `advise` (Gemini) now that `patterns` writes rules with no API key; it is the only user
+  of genai and most of `go.sum`.
 - `seed-contract-fixture`, `docs/schemas`, `testdata/contracts`: only matter to tracers.
 
 ## Stack
 
-- `looptap-1` (done): import, Go 1.26 + current deps, actions bump (#59), this file.
-- `looptap-2`: `parse <path>` sniffs file contents; scan `CLAUDE_CONFIG_DIR` and
-  `~/.config/claude/projects`; skip Claude Code meta and sidechain lines; fixtures.
-- `looptap-3`: Codex rollout parser (`~/.codex/sessions`, `archived_sessions`) with fixtures.
-- `looptap-4`: cut `html`, `analyze`, Modal deploy.
-- `looptap-5`: module path `github.com/TanGentleman/looptap` so `go install` works; README
-  for newcomers with a runnable example on the bundled fixtures.
+Each branch is based on the one before it. All pass `go vet`, `go test -race` and
+`scripts/smoke-db.sh` after `git am` on a fresh upstream clone.
+
+- `looptap-1`: import, Go 1.26 + current deps, actions bump (#59), this file.
+- `looptap-2`: `parse <dir>` sniffs files outside `.claude/projects/`; default source
+  honors `CLAUDE_CONFIG_DIR`; skip `isMeta` and `isCompactSummary` user lines.
+- `looptap-3`: Codex rollout parser (`sessions/`, `archived_sessions/`, `CODEX_HOME`),
+  shell-output header stripped so "Exit code: 0" isn't a failure; fixture + tests.
+- `looptap-4`: cut `html` and the Modal deploy.
+- `looptap-5`: module path `github.com/TanGentleman/looptap` (for `go install`), version
+  from build info, README example on the bundled fixtures, this file updated.
 
 ## Apply a branch upstream
 
@@ -67,10 +76,17 @@ If `git am` rejects a hunk over line endings, retry with `git am --keep-cr`.
 
 ## Needs Tan
 
+- `.jsonl.zst` Codex rollouts are skipped. Codex compresses rollouts older than 7 days
+  when compression is enabled; reading them needs a zstd dependency.
+- Codex fixture is hand-written from the Rust types, not a captured rollout. Run
+  `looptap parse ~/.codex/sessions --db /tmp/c.db` on a real machine once.
+- `go install github.com/TanGentleman/looptap@latest` only works after `-5` lands upstream
+  (and needs a C compiler for go-sqlite3).
 - Go floor raised to 1.26 (needed by current grpc via genai). If you want to keep 1.24
   users building from source, pin genai back instead.
 - Cut a release from main (`cut-release.yml`) so `install.sh` users get `patterns`.
 - Is tracers still alive and public? If not, the contract docs and fixtures can go.
-- Close or rebase PR #8 and the Cursor drafts (#55-#58, #60-#62).
+- Close or rebase PR #8 and the drafts (#55-#58, #60-#62). `-4` deletes `deploy/`, which
+  #57 edits.
 - Release workflows (`release.yml`, `release-smoke.yml`, `cut-release.yml`) were linted,
   not run.
