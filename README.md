@@ -8,6 +8,8 @@ Tweak that agent loop. Reads your coding agent's transcripts, flags the rough pa
 curl -fsSL https://raw.githubusercontent.com/TanGentleman/looptap/main/scripts/install.sh | bash
 ```
 
+Or from source (needs cgo for SQLite): `go install github.com/TanGentleman/looptap@latest`.
+
 ## Try it
 
 ```bash
@@ -21,6 +23,15 @@ uvx datasette ~/.looptap/looptap.db --metadata metadata.json
 ```
 
 That's the tour. `looptap --help` lists the rest (`advise`, `analyze`, `parse`, `patterns`, `query`, `seed-contract-fixture`, `signal`, `version`); the why-and-how lives in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+No transcripts handy? The repo ships fixtures:
+
+```bash
+git clone https://github.com/TanGentleman/looptap && cd looptap
+go run . run testdata/claude_code testdata/codex --db /tmp/demo.db
+go run . query --db /tmp/demo.db --signal failure --format paths
+# testdata/codex/rollout-2026-11-01T10-00-00-0199a000-0000-7000-8000-000000000001.jsonl
+```
 
 Pipe rough sessions to whatever tool wants them next:
 
