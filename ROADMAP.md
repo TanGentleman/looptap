@@ -8,27 +8,20 @@ want to see where the agent keeps tripping.
 
 ## Status (upstream main d8ab84b, checked 2026-11-08)
 
-- Builds and passes on Go 1.24.5: `go vet ./...`, `go test -race ./...` (8 packages),
-  `scripts/smoke-db.sh`. Same on Go 1.26.10 after the bumps on `-1`, and on Go 1.27.3
-  through `-6`.
-- `scripts/install.sh` installs v0.7.0 (2026-04-30). That release has no `patterns` or
-  `seed-contract-fixture`, so the README's `looptap patterns` example fails for anyone who
-  installed it. main needs a new tag.
-- Go 1.24 is out of support (go.dev lists 1.27.3 and 1.26.10). Dependencies were 4-25
-  minor versions behind (`go get -u ./...`); genai 1.77 needs grpc 1.85, which needs Go 1.26.
-- Codex: `internal/parser/codex.go` is a stub that errors, so every file under
-  `~/.codex/sessions` prints `skip ... not yet implemented`. Current format checked
-  against openai/codex `codex-rs/protocol` (main, 2026-11-08).
-- `looptap parse <dir>` only accepts files whose path contains `.claude/projects/`:
-  `looptap parse testdata/claude_code` finds 0 files.
-- Claude Code: only `~/.claude/projects` is scanned; `CLAUDE_CONFIG_DIR` is ignored.
-  Injected `isMeta` lines (command caveats, skill bodies) and the `/compact` summary are
-  read as user turns. Checked against the strings in `@anthropic-ai/claude-code` 2.1.319.
-- Dead links: `https://github.com/TanGentleman/tracers` (404 without auth; the contract
-  docs depend on it), schema `$id`s on `looptap.dev` (no DNS record; the ids are only
-  used as keys in `internal/rule/contract_test.go`, so tests pass).
-- Open upstream PRs: #59 dependabot (applied on `-1`), #8 (Gemini JSON parsing), and
-  drafts #55-#58, #60-#62 (`start.sh` injection demos, `looptap env`).
+- Upstream main builds on Go 1.24.5; this stack needs Go 1.26+ and is checked on
+  Go 1.27.3 (go.dev tarball, sha256 checked): `go vet`, `go test -race`,
+  `scripts/smoke-db.sh`, actionlint v1.7.12, shellcheck, shfmt v3.14.1.
+- Before the stack: the Codex parser was a stub, `parse <dir>` ignored files outside
+  `.claude/projects/`, `CLAUDE_CONFIG_DIR` and `isMeta` lines were not handled, and
+  the seven detectors had no tests (10% statement coverage in `internal/signal`).
+- `scripts/install.sh` installs v0.7.0 (2026-04-30), which has no `patterns`,
+  `seed-contract-fixture` or Codex parser.
+- `[signals]` and `[phrases]` in `config.toml` are parsed but no code reads them.
+- Dead links: `https://github.com/TanGentleman/tracers` (404 without auth; the
+  contract docs depend on it), schema `$id`s on `looptap.dev` (no DNS record; only
+  used as keys in `internal/rule/contract_test.go`).
+- Open upstream PRs: #59 dependabot (applied on `-1`), #8 (Gemini JSON parsing),
+  drafts #55-#58, #60-#62.
 
 ## Signal vs noise
 
@@ -65,6 +58,11 @@ Each branch is based on the one before it. All pass `go vet`, `go test -race` an
   from build info, README example on the bundled fixtures, this file updated.
 - `looptap-6` (optional): cut `advise`, `analyze`, their config and genai. Root command
   built in `newRootCmd` so a test pins which commands exist.
+- `looptap-7`: jsonschema v6.0.3; CI and release on Go 1.27.3, alpine 3.24,
+  upload-artifact v7.0.2, download-artifact v8.0.2, actionlint v1.7.12, shfmt
+  v3.14.1; table tests for the seven detectors and an end-to-end test of the README
+  example; README rewritten; ARCHITECTURE matches the detectors; CI runs the quick
+  start. Needs `-6`.
 
 ## Apply a branch upstream
 
@@ -79,26 +77,24 @@ go vet ./... && go test -race -count=1 ./...
 ```
 
 For a stacked branch, use the previous branch as the base: `origin/looptap-1..origin/looptap-2`.
-For the whole stack, `"$base"..origin/looptap-6` (or `..origin/looptap-5` to keep
-`advise` and `analyze`).
+For the whole stack, `"$base"..origin/looptap-7` (or `..origin/looptap-5` to keep
+`advise` and `analyze`; `-7` sits on `-6`).
 If `git am` rejects a hunk over line endings, retry with `git am --keep-cr`.
 
 ## Needs Tan
 
-- `.jsonl.zst` Codex rollouts are skipped. Codex compresses rollouts older than 7 days
-  when compression is enabled; reading them needs a zstd dependency.
-- Codex fixture is hand-written from the Rust types, not a captured rollout. Run
-  `looptap parse ~/.codex/sessions --db /tmp/c.db` on a real machine once.
-- `go install github.com/TanGentleman/looptap@latest` only works after `-5` lands upstream
-  (and needs a C compiler for go-sqlite3).
-- Go floor raised to 1.26 on `-1` (needed by current grpc via genai). `-6` drops genai, but
-  `golang.org/x/text` v0.43 (via jsonschema, test-only) also declares go 1.26.0, so the floor stays unless
-  you pin older deps.
-- `-6` removes `advise` and `analyze`; anyone scripting them with `GOOGLE_API_KEY` loses
-  them. Skip `-6` if you still use them.
-- Cut a release from main (`cut-release.yml`) so `install.sh` users get `patterns`.
-- Is tracers still alive and public? If not, the contract docs and fixtures can go.
-- Close or rebase PR #8 and the drafts (#55-#58, #60-#62). `-4` deletes `deploy/`, which
-  #57 edits. #8 only touches `internal/advise` and `internal/analyze`, so `-6` makes it moot.
-- Release workflows (`release.yml`, `release-smoke.yml`, `cut-release.yml`) were linted,
-  not run.
+- Cut a release from main (`cut-release.yml`) once the stack lands, so `install.sh`
+  and `go install ...@latest` users get `patterns` and the Codex parser. The
+  release workflows were linted, not run.
+- Run `looptap parse ~/.codex/sessions --db /tmp/c.db` on a real machine once; the
+  Codex fixture is hand-written from the Rust types. `.jsonl.zst` rollouts are
+  skipped (reading them needs a zstd dependency).
+- `[signals]` and `[phrases]` config keys do nothing. Wire them into the detectors or
+  delete them from `internal/config` and ARCHITECTURE.md.
+- Go floor is 1.26: `golang.org/x/text` v0.43 (via jsonschema, test-only) declares
+  go 1.26.0.
+- `-6` removes `advise` and `analyze`; skip `-6` and `-7` if you still use them.
+- Is tracers still alive and public? If not, `docs/contracts.md`, `docs/schemas`,
+  `testdata/contracts` and `seed-contract-fixture` can go.
+- Close or rebase PR #8 (moot after `-6`) and the drafts (#55-#58, #60-#62); `-4`
+  deletes `deploy/`, which #57 edits.
