@@ -167,13 +167,13 @@ All detectors operate on `Session` + `[]Turn`. No network. No LLM.
 
 | Signal | Category | Detection |
 |--------|----------|-----------|
-| **Misalignment** | interaction | Correction phrases from `phrases/misalignment.txt` (edit-distance tolerant). Consecutive user turns with token similarity > 0.7. |
-| **Stagnation** | interaction | Pairwise assistant turn similarity > 0.8. Turn count > 2× project median. |
-| **Disengagement** | interaction | Final user turn ≤ 5 words and not a satisfaction phrase. Abandonment phrases from `phrases/disengagement.txt`. |
-| **Satisfaction** | interaction | Gratitude/success phrases from `phrases/satisfaction.txt` in final 3 user turns. |
+| **Misalignment** | interaction | Correction phrases from `internal/signal/phrases/misalignment.txt` (edit-distance tolerant). Consecutive user turns with token similarity > 0.7. |
+| **Stagnation** | interaction | Consecutive assistant turns with token similarity > 0.8. |
+| **Disengagement** | interaction | Final user turn ≤ 5 words and not a satisfaction phrase. Abandonment phrases from `internal/signal/phrases/disengagement.txt`. |
+| **Satisfaction** | interaction | Gratitude/success phrases from `internal/signal/phrases/satisfaction.txt` in final 3 user turns. |
 | **Failure** | execution | `tool_result` turns with `IsError == true`. Error patterns in content (stack traces, "command failed", "exit code"). |
 | **Loop** | execution | Sliding window of 6 over `tool_use` turns. Flag when ≥ 3 share the same ToolName with content similarity > 0.8. |
-| **Exhaustion** | environment | Rate-limit/context-length/timeout patterns in `tool_result` and `system` turns. |
+| **Exhaustion** | environment | Rate-limit/context-length/timeout phrases from `internal/signal/phrases/exhaustion.txt` in `tool_result`, `system` and `assistant` turns. |
 
 ## Text utilities (`internal/signal/text.go`)
 
@@ -242,7 +242,7 @@ misalignment = "/path/to/replace.txt"       # override built-in phrases
 misalignment_extra = "/path/to/append.txt"  # add to built-in phrases
 ```
 
-Unknown sections are ignored, so a leftover `[advise]` from older versions still loads.
+Only `[database] path` and `[sources] paths` take effect. `[signals]` and `[phrases]` are parsed but no detector reads them yet; the thresholds and phrase lists above are fixed in the code. Unknown sections are ignored, so a leftover `[advise]` from older versions still loads.
 
 ## Dependencies
 
@@ -276,7 +276,7 @@ internal/patterns/seed.go      # shared contract fixture (SeedContractFixture)
 internal/rule/types.go         # tracers.rule/v1 record (Bundle, Card, …)
 internal/rule/synth.go         # deterministic cluster → Card synthesis
 internal/rule/redact.go        # evidence excerpt cap + secret pre-redactor
-phrases/*.txt                  # embedded phrase lists
+internal/signal/phrases/*.txt  # embedded phrase lists
 testdata/                      # fixture transcripts
 .github/workflows/ci.yml        # build + test on push/PR
 .github/workflows/release.yml   # tag-triggered binary releases
