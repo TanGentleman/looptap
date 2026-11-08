@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -13,18 +14,28 @@ func TestDefaultSourcePaths(t *testing.T) {
 	}
 	tests := []struct {
 		name      string
-		configDir string
-		want      string
+		claudeDir string
+		codexHome string
+		want      []string
 	}{
-		{"default", "", filepath.Join(home, ".claude", "projects")},
-		{"CLAUDE_CONFIG_DIR", "/srv/claude", filepath.Join("/srv/claude", "projects")},
+		{"default", "", "", []string{
+			filepath.Join(home, ".claude", "projects"),
+			filepath.Join(home, ".codex", "sessions"),
+			filepath.Join(home, ".codex", "archived_sessions"),
+		}},
+		{"env overrides", "/srv/claude", "/srv/codex", []string{
+			filepath.Join("/srv/claude", "projects"),
+			filepath.Join("/srv/codex", "sessions"),
+			filepath.Join("/srv/codex", "archived_sessions"),
+		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Setenv("CLAUDE_CONFIG_DIR", tt.configDir)
+			t.Setenv("CLAUDE_CONFIG_DIR", tt.claudeDir)
+			t.Setenv("CODEX_HOME", tt.codexHome)
 			got := DefaultSourcePaths()
-			if len(got) == 0 || got[0] != tt.want {
-				t.Errorf("DefaultSourcePaths()[0] = %v, want %s", got, tt.want)
+			if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+				t.Errorf("DefaultSourcePaths() = %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/TanGentleman/looptap/main/scripts/i
 looptap run && looptap info
 ```
 
-That parses every transcript under `~/.claude/projects/` (or `$CLAUDE_CONFIG_DIR/projects`; pass a directory to `run` to read somewhere else), fires the seven detectors, and prints what it found. Browse the database with [datasette](https://datasette.io/):
+That parses every Claude Code and Codex transcript under `~/.claude/projects/` and `~/.codex/sessions/` (or `$CLAUDE_CONFIG_DIR`, `$CODEX_HOME`; pass a directory to `run` to read somewhere else), fires the seven detectors, and prints what it found. Browse the database with [datasette](https://datasette.io/):
 
 ```bash
 uvx datasette ~/.looptap/looptap.db --metadata metadata.json

@@ -19,7 +19,7 @@ type Parser interface {
 
 Registered in a package-level slice. `Detect(path)` iterates and returns the first match. `Discover(dirs)` walks directories and collects everything parseable.
 
-Implementations: `ClaudeCode` (working), `Codex` (stub).
+Implementations: `ClaudeCode`, `Codex`.
 
 ### Detector
 
@@ -147,6 +147,19 @@ Each line is a JSON object with a `type` field. We parse `"user"` and `"assistan
 **Metadata:** `sessionId`, `cwd` (→ Project), `gitBranch`, `message.model`, timestamps from first/last lines. Session ID is `sha256("claude-code" + sessionId)`.
 
 Subagent transcripts (in `<session>/subagents/`) are skipped. Files under `.claude/projects/` are taken on path alone; anything else (`$CLAUDE_CONFIG_DIR/projects`, a directory passed to `parse`) is accepted if one of its first 20 lines is a `user`/`assistant` record with a `sessionId`.
+
+## Codex rollout format
+
+Rollouts live in `$CODEX_HOME/sessions/YYYY/MM/DD/rollout-*.jsonl` (and `archived_sessions/`). Each line is `{"timestamp", "type", "payload"}`.
+
+**Turn mapping:**
+- `event_msg` / `user_message` → `Role: "user"`. The matching `response_item` user message is skipped, as are the injected AGENTS.md, environment and developer messages.
+- `response_item` assistant `message` → `Role: "assistant"`, `output_text` parts joined
+- `function_call`, `custom_tool_call`, `local_shell_call` → `Role: "tool_use"`
+- `function_call_output`, `custom_tool_call_output` → `Role: "tool_result"`, `ToolName` from the call, `IsError` when the output has a non-zero `Exit code: N` or `Process exited with code N` header (older `{"output","metadata":{"exit_code"}}` outputs too)
+- `reasoning`, `compacted`, token counts and other events are skipped
+
+**Metadata:** first `session_meta` gives `id`, `cwd`, `git.branch`; `turn_context.model` gives the model. Session ID is `sha256("codex" + id)`. Compressed `.jsonl.zst` rollouts are not read.
 
 ## Signal detection rules
 
@@ -340,7 +353,7 @@ internal/db/queries.go         # all SQL queries
 internal/parser/types.go       # Session, Turn
 internal/parser/parser.go      # Parser interface, Detect(), Discover()
 internal/parser/claude_code.go # Claude Code JSONL parser
-internal/parser/codex.go       # Codex parser (stub)
+internal/parser/codex.go       # Codex parser
 internal/signal/types.go       # Signal struct
 internal/signal/detector.go    # Detector interface, RunAll()
 internal/signal/text.go        # shared text utilities (incl. ErrorClass)

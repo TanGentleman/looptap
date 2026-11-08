@@ -55,7 +55,7 @@ func DefaultDBPath() string {
 }
 
 // DefaultSourcePaths returns the default transcript directories.
-// Claude Code honors CLAUDE_CONFIG_DIR, so we do too.
+// Claude Code honors CLAUDE_CONFIG_DIR and Codex honors CODEX_HOME, so we do too.
 func DefaultSourcePaths() []string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -65,9 +65,14 @@ func DefaultSourcePaths() []string {
 	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
 		claudeDir = dir
 	}
+	codexDir := filepath.Join(home, ".codex")
+	if dir := os.Getenv("CODEX_HOME"); dir != "" {
+		codexDir = dir
+	}
 	return []string{
 		filepath.Join(claudeDir, "projects"),
-		filepath.Join(home, ".codex", "sessions"),
+		filepath.Join(codexDir, "sessions"),
+		filepath.Join(codexDir, "archived_sessions"),
 	}
 }
 
