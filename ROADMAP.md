@@ -9,7 +9,8 @@ want to see where the agent keeps tripping.
 ## Status (upstream main d8ab84b, checked 2026-11-08)
 
 - Builds and passes on Go 1.24.5: `go vet ./...`, `go test -race ./...` (8 packages),
-  `scripts/smoke-db.sh`. Same on Go 1.26.10 after the bumps on `-1`.
+  `scripts/smoke-db.sh`. Same on Go 1.26.10 after the bumps on `-1`, and on Go 1.27.3
+  through `-6`.
 - `scripts/install.sh` installs v0.7.0 (2026-04-30). That release has no `patterns` or
   `seed-contract-fixture`, so the README's `looptap patterns` example fails for anyone who
   installed it. main needs a new tag.
@@ -38,11 +39,15 @@ Cut on `-4`: `html` (asks an agent to write a branch report; never reads transcr
 `.github/workflows/html-report.yml`, the opencode configs, `deploy/` (Modal app),
 `scripts/setup.sh`, `scripts/deploy.sh`, `example.env`. About 2,700 lines.
 
+Cut on `-6` (optional; stop at `-5` to keep them): `advise` and `analyze`, the two
+commands that need `GOOGLE_API_KEY`. `analyze` sends a CLAUDE.md file to Gemini and never
+reads transcripts; `advise` sends signal counts to Gemini for CLAUDE.md rules, which
+`patterns` already writes offline. Gone with them: `internal/advise`, `internal/analyze`,
+the `[advise]` config section (old configs still load) and genai with 25 indirect deps
+(`go.mod` keeps 4 direct, 3 indirect). The `tracers.analyze/v1` schemas and fixtures stay:
+they describe the removed hosted `/v1/analyze`, not `looptap analyze`'s output.
+
 Left alone, candidates for a later cut:
-- `analyze` (Gemini review of a CLAUDE.md file; does not read transcripts). Kept because
-  `tracers.analyze/v1` schemas and fixtures describe its output.
-- `advise` (Gemini) now that `patterns` writes rules with no API key; it is the only user
-  of genai and most of `go.sum`.
 - `seed-contract-fixture`, `docs/schemas`, `testdata/contracts`: only matter to tracers.
 
 ## Stack
@@ -58,6 +63,8 @@ Each branch is based on the one before it. All pass `go vet`, `go test -race` an
 - `looptap-4`: cut `html` and the Modal deploy.
 - `looptap-5`: module path `github.com/TanGentleman/looptap` (for `go install`), version
   from build info, README example on the bundled fixtures, this file updated.
+- `looptap-6` (optional): cut `advise`, `analyze`, their config and genai. Root command
+  built in `newRootCmd` so a test pins which commands exist.
 
 ## Apply a branch upstream
 
@@ -72,6 +79,8 @@ go vet ./... && go test -race -count=1 ./...
 ```
 
 For a stacked branch, use the previous branch as the base: `origin/looptap-1..origin/looptap-2`.
+For the whole stack, `"$base"..origin/looptap-6` (or `..origin/looptap-5` to keep
+`advise` and `analyze`).
 If `git am` rejects a hunk over line endings, retry with `git am --keep-cr`.
 
 ## Needs Tan
@@ -82,11 +91,14 @@ If `git am` rejects a hunk over line endings, retry with `git am --keep-cr`.
   `looptap parse ~/.codex/sessions --db /tmp/c.db` on a real machine once.
 - `go install github.com/TanGentleman/looptap@latest` only works after `-5` lands upstream
   (and needs a C compiler for go-sqlite3).
-- Go floor raised to 1.26 (needed by current grpc via genai). If you want to keep 1.24
-  users building from source, pin genai back instead.
+- Go floor raised to 1.26 on `-1` (needed by current grpc via genai). `-6` drops genai, but
+  `golang.org/x/text` v0.43 (via cobra) also declares go 1.26.0, so the floor stays unless
+  you pin older deps.
+- `-6` removes `advise` and `analyze`; anyone scripting them with `GOOGLE_API_KEY` loses
+  them. Skip `-6` if you still use them.
 - Cut a release from main (`cut-release.yml`) so `install.sh` users get `patterns`.
 - Is tracers still alive and public? If not, the contract docs and fixtures can go.
 - Close or rebase PR #8 and the drafts (#55-#58, #60-#62). `-4` deletes `deploy/`, which
-  #57 edits.
+  #57 edits. #8 only touches `internal/advise` and `internal/analyze`, so `-6` makes it moot.
 - Release workflows (`release.yml`, `release-smoke.yml`, `cut-release.yml`) were linted,
   not run.
