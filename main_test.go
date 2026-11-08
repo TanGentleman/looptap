@@ -15,6 +15,8 @@ func TestRootCommands(t *testing.T) {
 		{"patterns", true},
 		{"seed-contract-fixture", true},
 		{"version", true},
+		{"advise", false},
+		{"analyze", false},
 	}
 	root := newRootCmd()
 	for _, tt := range tests {

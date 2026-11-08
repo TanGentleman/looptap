@@ -40,3 +40,30 @@ func TestDefaultSourcePaths(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadIgnoresRetiredSections(t *testing.T) {
+	tests := []struct {
+		name string
+		toml string
+	}{
+		{"no file", ""},
+		{"advise section from before the cut", "[database]\npath = \"/tmp/x.db\"\n\n[advise]\napi_key = \"k\"\nmodel = \"gemini-3.1-flash-lite-preview\"\n"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			if tt.toml != "" {
+				if err := os.MkdirAll(filepath.Join(home, ".looptap"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(home, ".looptap", "config.toml"), []byte(tt.toml), 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if _, err := Load(); err != nil {
+				t.Fatalf("Load() = %v, want nil", err)
+			}
+		})
+	}
+}

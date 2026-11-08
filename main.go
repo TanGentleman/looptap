@@ -50,8 +50,6 @@ func newRootCmd() *cobra.Command {
 		cmd.NewQueryCmd(&dbPath),
 		cmd.NewPatternsCmd(&dbPath),
 		cmd.NewSeedContractFixtureCmd(&dbPath),
-		cmd.NewAdviseCmd(&dbPath),
-		cmd.NewAnalyzeCmd(),
 		newVersionCmd(),
 	)
 	return rootCmd

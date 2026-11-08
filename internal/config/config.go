@@ -13,12 +13,6 @@ type Config struct {
 	Sources  SourcesConfig  `toml:"sources"`
 	Signals  SignalsConfig  `toml:"signals"`
 	Phrases  PhrasesConfig  `toml:"phrases"`
-	Advise   AdviseConfig   `toml:"advise"`
-}
-
-type AdviseConfig struct {
-	APIKey string `toml:"api_key"` // fallback; prefer GOOGLE_API_KEY env
-	Model  string `toml:"model"`   // default gemini-3.1-flash-lite-preview
 }
 
 type DatabaseConfig struct {
@@ -87,9 +81,6 @@ func Load() (*Config, error) {
 			StagnationTurnFactor: 2.0,
 			LoopWindow:           6,
 			LoopMinRepeats:       3,
-		},
-		Advise: AdviseConfig{
-			Model: "gemini-3.1-flash-lite-preview",
 		},
 	}
 
