@@ -30,7 +30,7 @@ permissions:
   contents: read
 
 env:
-  GO_VERSION: "1.26.x"
+  GO_VERSION: "1.27.3"
 
 jobs:
   lint-automation:
@@ -48,8 +48,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
-          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
-          go install mvdan.cc/sh/v3/cmd/shfmt@v3.10.0
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          go install mvdan.cc/sh/v3/cmd/shfmt@v3.14.1
           echo "$(go env GOPATH)/bin" >>"$GITHUB_PATH"
 
       - name: actionlint

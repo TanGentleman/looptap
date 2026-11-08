@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 env:
-  GO_VERSION: "1.26.x"
+  GO_VERSION: "1.27.3"
   # Expanded once here so run: blocks reference $REF_NAME / $REPO as shell vars
   # rather than letting Actions splice a tag name straight into the script.
   REF_NAME: ${{ github.ref_name }}
@@ -44,11 +44,11 @@ jobs:
           GOARCH: arm64
           CGO_ENABLED: "1"
         run: go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${REF_NAME}" -o looptap-darwin-arm64 .
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-darwin-amd64
           path: looptap-darwin-amd64
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-darwin-arm64
           path: looptap-darwin-arm64
@@ -65,7 +65,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
       - run: CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${REF_NAME}" -o looptap-linux-amd64 .
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-linux-amd64
           path: looptap-linux-amd64
@@ -82,7 +82,7 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
       - run: CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${REF_NAME}" -o looptap-linux-arm64 .
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-linux-arm64
           path: looptap-linux-arm64
@@ -95,11 +95,11 @@ jobs:
         with:
           persist-credentials: false
       - run: |
-          docker run --rm -e REF_NAME -v "${PWD}:/src" -w /src golang:1.26-alpine sh -ec '
+          docker run --rm -e REF_NAME -v "${PWD}:/src" -w /src golang:1.27.3-alpine3.24 sh -ec '
             apk add --no-cache build-base sqlite-dev git
             CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${REF_NAME}" -o looptap-linux-amd64-musl .
           '
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-linux-amd64-musl
           path: looptap-linux-amd64-musl
@@ -112,11 +112,11 @@ jobs:
         with:
           persist-credentials: false
       - run: |
-          docker run --rm -e REF_NAME -v "${PWD}:/src" -w /src golang:1.26-alpine sh -ec '
+          docker run --rm -e REF_NAME -v "${PWD}:/src" -w /src golang:1.27.3-alpine3.24 sh -ec '
             apk add --no-cache build-base sqlite-dev git
             CGO_ENABLED=1 go build -buildvcs=false -trimpath -ldflags="-s -w -X main.Version=${REF_NAME}" -o looptap-linux-arm64-musl .
           '
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bin-linux-arm64-musl
           path: looptap-linux-arm64-musl
@@ -131,7 +131,7 @@ jobs:
       - linux-musl-arm64
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: artifacts
       - name: Flatten & checksum

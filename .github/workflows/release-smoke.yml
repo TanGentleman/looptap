@@ -56,7 +56,7 @@ jobs:
       - name: "Smoke: musl binary boots and SQLite works"
         if: matrix.smoke == 'musl'
         run: |
-          docker run --rm -v "$PWD:/work" -w /work alpine:3.20 \
+          docker run --rm -v "$PWD:/work" -w /work alpine:3.24 \
             sh -ec 'apk add --no-cache bash && bash scripts/smoke-db.sh ./looptap /tmp/smoke.db'
 
   install-script:
