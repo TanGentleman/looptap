@@ -1,53 +1,108 @@
 # looptap
 
-Tweak that agent loop. Reads your coding agent's transcripts, flags the rough patches — correction loops, dead ends, tool-call death spirals — and dumps it to SQLite for datasette or ready-to-paste CLAUDE.md rules. Everything runs offline; no API key.
+Reads Claude Code and Codex transcripts from disk, runs seven offline detectors
+over each session, and writes sessions, turns and signals to SQLite. `patterns`
+groups failures that repeat across sessions into CLAUDE.md/AGENTS.md rules. No
+network, no API key.
 
-## Install
+## Quick start
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/TanGentleman/looptap/main/scripts/install.sh | bash
-```
+Needs Go 1.26 or newer (CI uses 1.27.3) and a C compiler: the SQLite driver,
+`github.com/mattn/go-sqlite3`, uses cgo.
 
-Or from source (needs cgo for SQLite): `go install github.com/TanGentleman/looptap@latest`.
-
-## Try it
-
-```bash
-looptap run && looptap info
-```
-
-That parses every Claude Code and Codex transcript under `~/.claude/projects/` and `~/.codex/sessions/` (or `$CLAUDE_CONFIG_DIR`, `$CODEX_HOME`; pass a directory to `run` to read somewhere else), fires the seven detectors, and prints what it found. Browse the database with [datasette](https://datasette.io/):
-
-```bash
-uvx datasette ~/.looptap/looptap.db --metadata metadata.json
-```
-
-That's the tour. `looptap --help` lists the rest (`parse`, `patterns`, `query`, `seed-contract-fixture`, `signal`, `version`); the why-and-how lives in [ARCHITECTURE.md](ARCHITECTURE.md).
-
-No transcripts handy? The repo ships fixtures:
-
-```bash
+```sh
 git clone https://github.com/TanGentleman/looptap && cd looptap
-go run . run testdata/claude_code testdata/codex --db /tmp/demo.db
-go run . query --db /tmp/demo.db --signal failure --format paths
+go build -o looptap .
+./looptap run testdata/claude_code testdata/codex --db /tmp/demo.db
+./looptap query --db /tmp/demo.db --signal failure --format paths
 # testdata/codex/rollout-2026-11-01T10-00-00-0199a000-0000-7000-8000-000000000001.jsonl
+./looptap info --db /tmp/demo.db
 ```
 
-Pipe rough sessions to whatever tool wants them next:
+On your own transcripts, run `looptap run` with no arguments; it writes to
+`~/.looptap/looptap.db`.
 
-```bash
-looptap query --signal failure --signal misalignment --format paths | xargs tar -czf bad-runs.tgz
+To install: `go install github.com/TanGentleman/looptap@latest` or
+`scripts/install.sh` (downloads a GitHub release binary and checks it against
+`SHA256SUMS`). The newest release, v0.7.0, predates `patterns`,
+`seed-contract-fixture` and the Codex parser; build from source until a new tag
+is cut.
+
+## Commands
+
+| Command | Does |
+| --- | --- |
+| `run [dir...]` | `parse`, then `signal` |
+| `parse [dir...]` | find transcripts and store them; files already stored (same SHA-256) are skipped |
+| `signal [--recompute]` | run the detectors over sessions not yet scored; `--recompute` redoes all |
+| `query` | sessions with matching signals, as `jsonl`, `paths` or `tsv` |
+| `patterns` | group recurring failures by tool and error class; `--format json` prints a `tracers.rule/v1` bundle |
+| `info` | session, turn and signal counts |
+| `seed-contract-fixture` | write the fixed two-cluster dataset that `patterns` tests use |
+| `version` | build version |
+
+Every command takes `--db PATH` (default `~/.looptap/looptap.db`); `--help`
+lists the rest of the flags. Exit code is 0 on success, including an empty
+`query` result, and 1 on any error.
+
+`patterns` needs at least `--min-sessions` (default 5) sessions with the same
+failure before it prints a rule. To see output without a transcript history:
+
+```sh
+./looptap seed-contract-fixture --db /tmp/p.db
+./looptap patterns --db /tmp/p.db
 ```
 
-Or go one rung up — cluster the failures that *keep* happening into ready-to-paste rules (no API key needed):
+## Signals
 
-```bash
-looptap patterns                  # human-readable
-looptap patterns --format json    # a tracers.rule/v1 bundle for downstream tools
+| Signal | Fires on |
+| --- | --- |
+| `misalignment` | correction phrases in user turns, or a user turn that repeats the previous one |
+| `stagnation` | consecutive assistant turns that say the same thing |
+| `disengagement` | give-up phrases, or a short final user turn that isn't thanks |
+| `satisfaction` | thanks or success phrases in the last three user turns |
+| `failure` | tool results marked as errors, or error text (traceback, exit code, build failed) |
+| `loop` | the same tool called three or more times with similar arguments |
+| `exhaustion` | rate-limit, context-length and timeout text |
+
+Phrase lists are in `internal/signal/phrases/`. Thresholds and the schema are in
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Sources and configuration
+
+| Source | Default | Override |
+| --- | --- | --- |
+| Claude Code | `~/.claude/projects` | `CLAUDE_CONFIG_DIR` (reads `$CLAUDE_CONFIG_DIR/projects`) |
+| Codex | `~/.codex/sessions`, `~/.codex/archived_sessions` | `CODEX_HOME` |
+
+Directories passed to `run` or `parse` replace the defaults. Compressed Codex
+rollouts (`.jsonl.zst`) are skipped.
+
+`~/.looptap/config.toml` is optional. Only `[database] path` and
+`[sources] paths` take effect; the `[signals]` and `[phrases]` keys described in
+ARCHITECTURE.md are parsed and ignored.
+
+Browse the database with [datasette](https://datasette.io/):
+`uvx datasette ~/.looptap/looptap.db --metadata metadata.json`.
+
+## Develop
+
+```sh
+go vet ./...
+go test -race -count=1 ./...
+go build -o looptap . && scripts/smoke-db.sh ./looptap /tmp/ci-smoke.db
 ```
 
-## More
+CI (`.github/workflows/ci.yml`) runs these on Go 1.27.3, plus actionlint
+v1.7.12, shellcheck, shfmt v3.14.1 and `scripts/ci-guardrails.sh` over the
+workflows and scripts. `-race` needs cgo as well.
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — signals, schema, prompts, every knob.
-- [docs/contracts.md](docs/contracts.md) — what looptap puts on the wire (`tracers.rule/v1`). Cross-system plan lives in tracers.
-- [`scripts/`](scripts) — install and release tooling.
+## Boundaries
+
+- looptap only reads local files and writes the SQLite database. It makes no
+  network requests.
+- `patterns --format json` and `docs/contracts.md` describe the hand-off to
+  tracers, a separate project; looptap does not send anything.
+- The Codex fixture is written from the Codex Rust types, not captured from a
+  real session. The release workflows (`release.yml`, `release-smoke.yml`,
+  `cut-release.yml`) are linted but have not run since these changes.
