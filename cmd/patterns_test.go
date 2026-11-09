@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"looptap/internal/db"
-	"looptap/internal/patterns"
-	"looptap/internal/rule"
+	"github.com/TanGentleman/looptap/internal/db"
+	"github.com/TanGentleman/looptap/internal/patterns"
+	"github.com/TanGentleman/looptap/internal/rule"
 )
 
 // seedDB plants the canonical two-cluster contract fixture into a throwaway DB

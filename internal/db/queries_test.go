@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"looptap/internal/parser"
-	"looptap/internal/signal"
+	"github.com/TanGentleman/looptap/internal/parser"
+	"github.com/TanGentleman/looptap/internal/signal"
 )
 
 // seedQuery puts three sessions and a smattering of signals into a fresh db,

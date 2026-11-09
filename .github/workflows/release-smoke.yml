@@ -34,7 +34,7 @@ jobs:
             smoke: musl
     runs-on: ${{ matrix.runner }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false # for scripts/smoke-db.sh
 
@@ -56,14 +56,14 @@ jobs:
       - name: "Smoke: musl binary boots and SQLite works"
         if: matrix.smoke == 'musl'
         run: |
-          docker run --rm -v "$PWD:/work" -w /work alpine:3.20 \
+          docker run --rm -v "$PWD:/work" -w /work alpine:3.24 \
             sh -ec 'apk add --no-cache bash && bash scripts/smoke-db.sh ./looptap /tmp/smoke.db'
 
   install-script:
     name: install.sh
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false # for scripts/
 

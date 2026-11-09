@@ -1,7 +1,7 @@
 package signal
 
 import (
-	"looptap/internal/parser"
+	"github.com/TanGentleman/looptap/internal/parser"
 	"strings"
 )
 

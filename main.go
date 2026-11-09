@@ -2,16 +2,36 @@ package main
 
 import (
 	"fmt"
-	"looptap/cmd"
 	"os"
+	"runtime/debug"
+
+	"github.com/TanGentleman/looptap/cmd"
 
 	"github.com/spf13/cobra"
 )
 
-// Version is stamped at build time via -ldflags.
+// Version is stamped at build time via -ldflags. `go install ...@vX.Y.Z`
+// builds fall back to the module version.
 var Version = "dev"
 
+func version() string {
+	if Version != "dev" {
+		return Version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return Version
+}
+
 func main() {
+	if err := newRootCmd().Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func newRootCmd() *cobra.Command {
 	var dbPath string
 
 	rootCmd := &cobra.Command{
@@ -30,16 +50,9 @@ func main() {
 		cmd.NewQueryCmd(&dbPath),
 		cmd.NewPatternsCmd(&dbPath),
 		cmd.NewSeedContractFixtureCmd(&dbPath),
-		cmd.NewAdviseCmd(&dbPath),
-		cmd.NewAnalyzeCmd(),
-		cmd.NewHTMLCmd(),
 		newVersionCmd(),
 	)
-
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	return rootCmd
 }
 
 func newVersionCmd() *cobra.Command {
@@ -47,7 +60,7 @@ func newVersionCmd() *cobra.Command {
 		Use:   "version",
 		Short: "Print the looptap version",
 		Run: func(cmd *cobra.Command, args []string) {
-			fmt.Fprintln(cmd.OutOrStdout(), Version)
+			fmt.Fprintln(cmd.OutOrStdout(), version())
 		},
 	}
 }

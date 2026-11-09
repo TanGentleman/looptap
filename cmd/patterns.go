@@ -5,10 +5,10 @@ import (
 	"io"
 	"strings"
 
-	"looptap/internal/config"
-	"looptap/internal/db"
-	"looptap/internal/patterns"
-	"looptap/internal/rule"
+	"github.com/TanGentleman/looptap/internal/config"
+	"github.com/TanGentleman/looptap/internal/db"
+	"github.com/TanGentleman/looptap/internal/patterns"
+	"github.com/TanGentleman/looptap/internal/rule"
 
 	"github.com/spf13/cobra"
 )
@@ -20,7 +20,7 @@ import (
 // error class) — counts the distinct sessions each shape touched, and either
 // prints them for a human (text) or emits a tracers.rule/v1 bundle of
 // ready-to-paste rules (json). No LLM, no API key: the rule wording comes from
-// deterministic templates. The LLM commands (advise) are optional polish on top.
+// deterministic templates.
 func NewPatternsCmd(dbPath *string) *cobra.Command {
 	var (
 		signals      []string

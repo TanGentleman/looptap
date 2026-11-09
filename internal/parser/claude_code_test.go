@@ -1,6 +1,9 @@
 package parser
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -11,6 +14,7 @@ func TestClaudeCodeCanParse(t *testing.T) {
 		"/home/user/.claude/projects/-hash/abc-123.jsonl",
 		"/Users/dev/.claude/projects/foo/session.jsonl",
 		"/home/user/.claude/projects/-hash/sessions/abc-123.jsonl", // old layout
+		"../../testdata/claude_code/simple_session.jsonl",          // sniffed
 	}
 	no := []string{
 		"/home/user/.claude/projects/-hash/abc-123.json",          // wrong extension
@@ -126,5 +130,54 @@ func TestClaudeCodeParseEmptyLines(t *testing.T) {
 	_, err := c.Parse("../../testdata/claude_code/nonexistent.jsonl")
 	if err == nil {
 		t.Error("expected error for missing file")
+	}
+}
+
+func TestClaudeCodeCanParseSniff(t *testing.T) {
+	dir := t.TempDir()
+	tests := []struct {
+		name string
+		body string
+		want bool
+	}{
+		{"claude code", `{"type":"summary","summary":"x"}` + "\n" + `{"type":"user","sessionId":"s1","message":{"role":"user","content":"hi"}}`, true},
+		{"codex rollout", `{"timestamp":"2026-01-05T15:00:00.000Z","type":"session_meta","payload":{"id":"s1"}}`, false},
+		{"not json", "hello\n", false},
+		{"empty", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(dir, strings.ReplaceAll(tt.name, " ", "_")+".jsonl")
+			if err := os.WriteFile(path, []byte(tt.body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if got := (&ClaudeCode{}).CanParse(path); got != tt.want {
+				t.Errorf("CanParse = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClaudeCodeSkipsMetaAndCompactSummary(t *testing.T) {
+	s, err := (&ClaudeCode{}).Parse("../../testdata/claude_code/meta_session.jsonl")
+	if err != nil {
+		t.Fatalf("Parse failed: %v", err)
+	}
+	want := []struct{ role, content string }{
+		{"user", "add a --verbose flag"},
+		{"assistant", "Added --verbose to main.go."},
+		{"user", "thanks, that works"},
+	}
+	if len(s.Turns) != len(want) {
+		t.Fatalf("got %d turns, want %d: %+v", len(s.Turns), len(want), s.Turns)
+	}
+	for i, w := range want {
+		if s.Turns[i].Role != w.role || s.Turns[i].Content != w.content {
+			t.Errorf("turn %d = %s %q, want %s %q", i, s.Turns[i].Role, s.Turns[i].Content, w.role, w.content)
+		}
+	}
+	// Skipped lines still count toward session timing
+	if got := s.StartedAt.Format("15:04:05"); got != "09:00:00" {
+		t.Errorf("StartedAt = %s, want 09:00:00", got)
 	}
 }

@@ -1,6 +1,6 @@
 package signal
 
-import "looptap/internal/parser"
+import "github.com/TanGentleman/looptap/internal/parser"
 
 // Misalignment detects user correction and rephrasing patterns.
 type Misalignment struct{}

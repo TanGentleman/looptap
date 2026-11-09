@@ -20,8 +20,9 @@ type ClaudeCode struct{}
 func (c *ClaudeCode) Name() string { return "claude-code" }
 
 // CanParse checks if the file looks like a Claude Code transcript.
-// Real path: ~/.claude/projects/<project-hash>/<session-id>.jsonl
-// Also matches the older layout with a /sessions/ subdirectory, just in case.
+// Real path: ~/.claude/projects/<project-hash>/<session-id>.jsonl, or
+// $CLAUDE_CONFIG_DIR/projects/... — anything outside .claude/projects/ gets
+// sniffed, so `looptap parse ./some/dir` works too.
 // Skips subagent transcripts — those live in <session>/subagents/ and
 // are someone else's problem for now.
 func (c *ClaudeCode) CanParse(path string) bool {
@@ -29,14 +30,38 @@ func (c *ClaudeCode) CanParse(path string) bool {
 		return false
 	}
 	normalized := filepath.ToSlash(path)
-	if !strings.Contains(normalized, ".claude/projects/") {
-		return false
-	}
 	// Subagent transcripts are interesting but not today's quest
 	if strings.Contains(normalized, "/subagents/") {
 		return false
 	}
-	return true
+	if strings.Contains(normalized, ".claude/projects/") {
+		return true
+	}
+	return sniffClaudeCode(path)
+}
+
+// sniffClaudeCode peeks at the first few lines for a user/assistant record
+// carrying a sessionId. Codex rollouts put their id under payload, so they
+// don't match.
+func sniffClaudeCode(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 0, 64*1024), 10*1024*1024)
+	for i := 0; i < 20 && scanner.Scan(); i++ {
+		var jl jsonLine
+		if json.Unmarshal(scanner.Bytes(), &jl) != nil {
+			continue
+		}
+		if jl.SessionID != "" && (jl.Type == "user" || jl.Type == "assistant") {
+			return true
+		}
+	}
+	return false
 }
 
 // Parse reads a JSONL transcript and returns a Session with all its Turns.
@@ -105,6 +130,12 @@ func (c *ClaudeCode) Parse(path string) (Session, error) {
 		}
 
 		if jl.Message == nil {
+			continue
+		}
+
+		// Injected context (command caveats, skill bodies, hook output) and
+		// compaction summaries ride in "user" lines but nobody typed them.
+		if jl.Type == "user" && (jl.IsMeta || jl.IsCompactSummary) {
 			continue
 		}
 
@@ -315,6 +346,9 @@ type jsonLine struct {
 	GitBranch string          `json:"gitBranch"`
 	Message   json.RawMessage `json:"message"`
 	UUID      string          `json:"uuid"`
+
+	IsMeta           bool `json:"isMeta"`
+	IsCompactSummary bool `json:"isCompactSummary"`
 }
 
 type jsonMessage struct {

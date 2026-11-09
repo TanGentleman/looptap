@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"looptap/internal/rule"
+	"github.com/TanGentleman/looptap/internal/rule"
 )
 
 // runSeed drives the seed-contract-fixture command against a fresh db path and

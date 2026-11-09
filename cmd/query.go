@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"looptap/internal/config"
-	"looptap/internal/db"
+	"github.com/TanGentleman/looptap/internal/config"
+	"github.com/TanGentleman/looptap/internal/db"
 
 	"github.com/spf13/cobra"
 )

@@ -13,12 +13,6 @@ type Config struct {
 	Sources  SourcesConfig  `toml:"sources"`
 	Signals  SignalsConfig  `toml:"signals"`
 	Phrases  PhrasesConfig  `toml:"phrases"`
-	Advise   AdviseConfig   `toml:"advise"`
-}
-
-type AdviseConfig struct {
-	APIKey string `toml:"api_key"` // fallback; prefer GOOGLE_API_KEY env
-	Model  string `toml:"model"`   // default gemini-3.1-flash-lite-preview
 }
 
 type DatabaseConfig struct {
@@ -55,14 +49,24 @@ func DefaultDBPath() string {
 }
 
 // DefaultSourcePaths returns the default transcript directories.
+// Claude Code honors CLAUDE_CONFIG_DIR and Codex honors CODEX_HOME, so we do too.
 func DefaultSourcePaths() []string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil
 	}
+	claudeDir := filepath.Join(home, ".claude")
+	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
+		claudeDir = dir
+	}
+	codexDir := filepath.Join(home, ".codex")
+	if dir := os.Getenv("CODEX_HOME"); dir != "" {
+		codexDir = dir
+	}
 	return []string{
-		filepath.Join(home, ".claude", "projects"),
-		filepath.Join(home, ".codex", "sessions"),
+		filepath.Join(claudeDir, "projects"),
+		filepath.Join(codexDir, "sessions"),
+		filepath.Join(codexDir, "archived_sessions"),
 	}
 }
 
@@ -77,9 +81,6 @@ func Load() (*Config, error) {
 			StagnationTurnFactor: 2.0,
 			LoopWindow:           6,
 			LoopMinRepeats:       3,
-		},
-		Advise: AdviseConfig{
-			Model: "gemini-3.1-flash-lite-preview",
 		},
 	}
 

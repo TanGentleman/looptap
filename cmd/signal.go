@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"looptap/internal/config"
-	"looptap/internal/db"
-	"looptap/internal/parser"
-	"looptap/internal/signal"
+	"github.com/TanGentleman/looptap/internal/config"
+	"github.com/TanGentleman/looptap/internal/db"
+	"github.com/TanGentleman/looptap/internal/parser"
+	"github.com/TanGentleman/looptap/internal/signal"
 
 	"github.com/spf13/cobra"
 )

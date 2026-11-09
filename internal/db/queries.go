@@ -3,8 +3,8 @@ package db
 import (
 	"database/sql"
 	"fmt"
-	"looptap/internal/parser"
-	"looptap/internal/signal"
+	"github.com/TanGentleman/looptap/internal/parser"
+	"github.com/TanGentleman/looptap/internal/signal"
 	"strings"
 	"time"
 )

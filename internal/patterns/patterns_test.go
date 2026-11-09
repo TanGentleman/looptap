@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"looptap/internal/db"
+	"github.com/TanGentleman/looptap/internal/db"
 )
 
 // seedPatterns builds a db with the canonical two-cluster fixture: an ENOENT

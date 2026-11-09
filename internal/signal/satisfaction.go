@@ -1,6 +1,6 @@
 package signal
 
-import "looptap/internal/parser"
+import "github.com/TanGentleman/looptap/internal/parser"
 
 // Satisfaction detects positive user feedback patterns.
 type Satisfaction struct{}

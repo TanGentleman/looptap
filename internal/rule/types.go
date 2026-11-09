@@ -3,9 +3,8 @@
 // One shape ties together the three things looptap learns from a pile of
 // transcripts: the failure *pattern* it sees recurring across sessions, the
 // *evidence* turns that prove it, and the *rule* worth pasting into an
-// AGENTS.md / CLAUDE.md to stop it happening again. It is the unification of
-// what used to be two ships passing in the night — advise.Recommendation and
-// analyze.Finding — and the wire format tracers parses at its share boundary.
+// AGENTS.md / CLAUDE.md to stop it happening again. It is also the wire format
+// tracers parses at its share boundary.
 //
 // The contract is tracers.rule/v1, specced in the tracers repo at
 // docs/rule-with-evidence.md. JSON tags here are load-bearing: they ARE the
